@@ -1,6 +1,8 @@
 package com.natanp_josefm_michaelk.picturegram;
 
+import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -15,4 +17,11 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
     }
+
+    // The method must match the name from XML and have this exact signature
+    public void openUsersActivity(View view) {
+        Intent intent = new Intent(this, UsersActivity.class);
+        startActivity(intent);
+    }
+
 }
