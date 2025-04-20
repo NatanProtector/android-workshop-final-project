@@ -7,7 +7,7 @@
     android:layout_height="match_parent"
     android:padding="16dp"
     tools:context=".MainActivity">
-
+  
     <TextView
         android:id="@+id/textViewTitle"
         android:layout_width="wrap_content"
@@ -30,7 +30,19 @@
         android:inputType="textEmailAddress"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@id/textViewTitle" />
+    
+  <Button
+        android:id="@+id/button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:onClick="openUsersActivity"
+        android:text="UserActivity"
+        app:layout_constraintTop_toBottomOf="@+id/textViewRegisterLink"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
 
     <EditText
         android:id="@+id/editTextPassword"
