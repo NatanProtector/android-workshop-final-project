@@ -32,13 +32,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        //EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
-        //ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-        //    Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-        //    v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-        //    return insets;
-        //});
 
         editTextEmail = findViewById(R.id.editTextEmail);
         editTextPassword = findViewById(R.id.editTextPassword);
@@ -78,6 +72,11 @@ public class MainActivity extends AppCompatActivity {
     // The method must match the name from XML and have this exact signature
     public void openUsersActivity(View view) {
         Intent intent = new Intent(this, UsersActivity.class);
+        startActivity(intent);
+    }
+
+    public void openSettingsActivity(View view) {
+        Intent intent = new Intent(this, SettingsActivity.class);
         startActivity(intent);
     }
 
