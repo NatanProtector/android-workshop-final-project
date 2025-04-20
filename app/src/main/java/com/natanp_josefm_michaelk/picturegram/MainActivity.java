@@ -18,6 +18,7 @@ import androidx.core.view.WindowInsetsCompat;
 /*  Notes:
  *  - changing screen orientation of screen destroys and creates the screen, must save info and reload
  *  - never block the main thread by putting loops in event listeners, USE ANOTHER THREAD
+ *  - must add splash activity with our names and logo (optional)
  * */
 
 public class MainActivity extends AppCompatActivity {
