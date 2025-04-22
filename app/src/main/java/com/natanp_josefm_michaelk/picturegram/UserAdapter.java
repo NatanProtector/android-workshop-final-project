@@ -1,11 +1,11 @@
 package com.natanp_josefm_michaelk.picturegram;
 
+import android.content.Intent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -34,18 +34,17 @@ public class UserAdapter extends RecyclerView.Adapter<UserAdapter.UserViewHolder
         holder.userNameText.setText(user.getName());
         holder.userImageView.setImageResource(user.getImageResourceId());
 
-        // 1) Make sure your root layout in item_user.xml has:
-        //    android:clickable="true"
-        //    android:focusable="true"
-        //    android:foreground="?attr/selectableItemBackground"
-        // 2) Handle the click on the entire row:
+        // Handle the click on the entire row to open ProfileActivity
         holder.itemView.setOnClickListener(v -> {
-            // Do something, e.g. show a toast or open another activity
-            Toast.makeText(
-                    holder.itemView.getContext(),
-                    "Clicked on: " + user.getName(),
-                    Toast.LENGTH_SHORT
-            ).show();
+            // Create intent to open ProfileActivity
+            Intent intent = new Intent(holder.itemView.getContext(), ProfileActivity.class);
+            
+            // Pass user data to the ProfileActivity
+            intent.putExtra("USER_NAME", user.getName());
+            intent.putExtra("USER_IMAGE", user.getImageResourceId());
+            
+            // Start the ProfileActivity
+            holder.itemView.getContext().startActivity(intent);
         });
     }
 
