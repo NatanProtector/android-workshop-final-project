@@ -1,12 +1,21 @@
 package com.natanp_josefm_michaelk.picturegram;
 
 import android.app.AlertDialog;
+import android.content.ContentResolver;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.MediaStore;
+import android.provider.OpenableColumns;
 import android.text.InputType;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
@@ -23,8 +32,16 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,7 +51,9 @@ import java.util.Locale;
 
 public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.OnPhotoClickListener {
 
-    private static final int PHOTO_REQUEST_CODE = 1001;
+    private static final String TAG = "ProfileActivity";
+    private static final String PHOTOS_PREFS = "photos_prefs";
+    private static final String PHOTOS_KEY = "user_photos";
     
     private ImageView profileImageView;
     private TextView profileNameTextView;
@@ -50,6 +69,8 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     private ActivityResultLauncher<Intent> galleryLauncher;
     private ActivityResultLauncher<Uri> cameraLauncher;
     private Uri currentPhotoUri;
+    private String currentPhotoPath;
+    private ItemTouchHelper touchHelper;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,17 +92,18 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         profileImageView.setImageResource(profileImageId);
         
         // Initialize photo list
-        userPhotoList = new ArrayList<>();
-        
-        // Add some sample photos (in a real app, these would come from a database)
-        addSamplePhotos();
+        userPhotoList = loadPhotos();
+        if (userPhotoList.isEmpty()) {
+            // Only add sample photos if no saved photos exist
+            addSamplePhotos();
+        }
         
         // Setup RecyclerView for photos with a grid layout
         GridLayoutManager layoutManager = new GridLayoutManager(this, 3);
         photosRecyclerView.setLayoutManager(layoutManager);
         
         // Create and set adapter
-        photoAdapter = new PhotoAdapter(userPhotoList, this);
+        photoAdapter = new PhotoAdapter(userPhotoList, this, userName);
         photosRecyclerView.setAdapter(photoAdapter);
         
         // Setup item touch helper for drag and drop reordering
@@ -100,6 +122,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                                 userPhotoList.add(newPhoto);
                             }
                             photoAdapter.notifyDataSetChanged();
+                            savePhotos();
                             Toast.makeText(this, selectedPhotoIds.size() + " photos added", Toast.LENGTH_SHORT).show();
                         }
                     }
@@ -112,13 +135,20 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                     if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                         Uri selectedImageUri = result.getData().getData();
                         if (selectedImageUri != null) {
-                            // In a real app, you would save this image to your app's storage
-                            // For this example, we'll use a placeholder drawable
-                            UserPhoto newPhoto = new UserPhoto(R.drawable.my_img1);
-                            newPhoto.setDescription("Photo from gallery");
-                            userPhotoList.add(newPhoto);
-                            photoAdapter.notifyItemInserted(userPhotoList.size() - 1);
-                            Toast.makeText(this, "Photo added from gallery", Toast.LENGTH_SHORT).show();
+                            try {
+                                // Copy the file to our app's storage
+                                String filePath = saveImageToInternalStorage(selectedImageUri);
+                                
+                                // Create a new UserPhoto with the file path
+                                UserPhoto newPhoto = new UserPhoto(filePath, "Photo from gallery");
+                                userPhotoList.add(newPhoto);
+                                photoAdapter.notifyItemInserted(userPhotoList.size() - 1);
+                                savePhotos();
+                                Toast.makeText(this, "Photo added from gallery", Toast.LENGTH_SHORT).show();
+                            } catch (IOException e) {
+                                Log.e(TAG, "Error saving image: " + e.getMessage());
+                                Toast.makeText(this, "Failed to save image", Toast.LENGTH_SHORT).show();
+                            }
                         }
                     }
                 });
@@ -128,13 +158,26 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 new ActivityResultContracts.TakePicture(),
                 success -> {
                     if (success && currentPhotoUri != null) {
-                        // In a real app, you would save this image to your app's storage
-                        // For this example, we'll use a placeholder drawable
-                        UserPhoto newPhoto = new UserPhoto(R.drawable.my_img2);
-                        newPhoto.setDescription("Photo from camera");
-                        userPhotoList.add(newPhoto);
-                        photoAdapter.notifyItemInserted(userPhotoList.size() - 1);
-                        Toast.makeText(this, "Photo captured from camera", Toast.LENGTH_SHORT).show();
+                        try {
+                            Log.d(TAG, "Camera photo captured successfully at: " + currentPhotoPath);
+                            
+                            // Create a new UserPhoto with the file path
+                            UserPhoto newPhoto = new UserPhoto(currentPhotoPath, "Photo from camera");
+                            userPhotoList.add(newPhoto);
+                            photoAdapter.notifyItemInserted(userPhotoList.size() - 1);
+                            savePhotos();
+                            
+                            // Display success message
+                            Toast.makeText(this, "Photo captured and saved successfully", Toast.LENGTH_SHORT).show();
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error processing camera image: " + e.getMessage(), e);
+                            Toast.makeText(this, "Failed to process camera image: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    } else {
+                        Log.e(TAG, "Camera capture failed or canceled: success=" + success + ", uri=" + currentPhotoUri);
+                        if (!success) {
+                            Toast.makeText(this, "Failed to capture photo", Toast.LENGTH_SHORT).show();
+                        }
                     }
                 });
         
@@ -145,6 +188,62 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 showPhotoSourceDialog();
             }
         });
+    }
+    
+    private String saveImageToInternalStorage(Uri imageUri) throws IOException {
+        // Get a file name from the URI if possible
+        String fileName = getFileNameFromUri(imageUri);
+        if (fileName == null) {
+            // Create a unique file name if we couldn't get one
+            fileName = "IMG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date()) + ".jpg";
+        }
+        
+        // Create the file in our app's private directory
+        File directory = new File(getFilesDir(), "photos");
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+        
+        File file = new File(directory, fileName);
+        try (InputStream is = getContentResolver().openInputStream(imageUri);
+             OutputStream os = new FileOutputStream(file)) {
+            
+            if (is == null) {
+                throw new IOException("Failed to open input stream from URI");
+            }
+            
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = is.read(buffer)) > 0) {
+                os.write(buffer, 0, length);
+            }
+            
+            return file.getAbsolutePath();
+        }
+    }
+    
+    private String getFileNameFromUri(Uri uri) {
+        String result = null;
+        if (uri.getScheme().equals("content")) {
+            try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (idx >= 0) {
+                        result = cursor.getString(idx);
+                    }
+                }
+            }
+        }
+        
+        if (result == null) {
+            result = uri.getPath();
+            int cut = result.lastIndexOf('/');
+            if (cut != -1) {
+                result = result.substring(cut + 1);
+            }
+        }
+        
+        return result;
     }
     
     private void setupItemTouchHelper() {
@@ -160,6 +259,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 
                 Collections.swap(userPhotoList, fromPosition, toPosition);
                 photoAdapter.notifyItemMoved(fromPosition, toPosition);
+                savePhotos(); // Save the new order
                 return true;
             }
 
@@ -169,8 +269,9 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             }
         };
         
-        ItemTouchHelper touchHelper = new ItemTouchHelper(callback);
+        touchHelper = new ItemTouchHelper(callback);
         touchHelper.attachToRecyclerView(photosRecyclerView);
+        photoAdapter.setTouchHelper(touchHelper);
     }
     
     private void showPhotoSourceDialog() {
@@ -203,15 +304,29 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     }
     
     private void openCamera() {
+        Log.d(TAG, "openCamera called");
         try {
             // Create a file to save the image
             File photoFile = createImageFile();
+            currentPhotoPath = photoFile.getAbsolutePath();
+            
+            Log.d(TAG, "Created image file at: " + currentPhotoPath);
+            
+            // Get URI for the file using FileProvider
             currentPhotoUri = FileProvider.getUriForFile(this,
                     "com.natanp_josefm_michaelk.picturegram.fileprovider",
                     photoFile);
+            
+            Log.d(TAG, "FileProvider URI: " + currentPhotoUri);
+            
+            // Launch camera
             cameraLauncher.launch(currentPhotoUri);
         } catch (IOException ex) {
-            Toast.makeText(this, "Error creating image file", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Error creating image file: " + ex.getMessage(), ex);
+            Toast.makeText(this, "Error creating image file: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+        } catch (Exception ex) {
+            Log.e(TAG, "Unexpected error opening camera: " + ex.getMessage(), ex);
+            Toast.makeText(this, "Camera error: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
     
@@ -219,12 +334,22 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         // Create an image file name
         String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
         String imageFileName = "JPEG_" + timeStamp + "_";
-        File storageDir = getExternalFilesDir(null);
-        return File.createTempFile(
+        
+        // Create a directory for storing photos if it doesn't exist
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        if (!storageDir.exists()) {
+            Log.d(TAG, "Creating pictures directory");
+            storageDir.mkdirs();
+        }
+        
+        // Create the file
+        File image = File.createTempFile(
                 imageFileName,  /* prefix */
                 ".jpg",         /* suffix */
                 storageDir      /* directory */
         );
+        
+        return image;
     }
     
     private void openSamplePhotos() {
@@ -238,6 +363,9 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         userPhotoList.add(new UserPhoto(R.drawable.my_img2, "Another cute cat"));
         userPhotoList.add(new UserPhoto(R.drawable.my_img3));
         userPhotoList.add(new UserPhoto(R.drawable.my_img4, "Just chillin'"));
+        
+        // Save the sample photos
+        savePhotos();
     }
 
     @Override
@@ -248,16 +376,37 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
 
     @Override
     public void onLikeClick(UserPhoto photo, int position) {
-        // Increase like count
-        photo.setLikeCount(photo.getLikeCount() + 1);
-        photoAdapter.notifyItemChanged(position);
+        // Toggle like with the current user's name
+        boolean likeToggled = photo.toggleLike(userName);
+        
+        if (likeToggled) {
+            // The like state changed (either added or removed)
+            photoAdapter.notifyItemChanged(position);
+            savePhotos();
+            
+            // Show appropriate message
+            String message = photo.isLikedByUser(userName) ? "Photo liked" : "Like removed";
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        }
     }
     
     @Override
     public void onDeleteClick(UserPhoto photo, int position) {
+        // If it's a file-based photo, delete the actual file
+        if (photo.hasFilePath()) {
+            File photoFile = new File(photo.getFilePath());
+            if (photoFile.exists()) {
+                photoFile.delete();
+            }
+        }
+        
         // Remove the photo from the list
         userPhotoList.remove(position);
         photoAdapter.notifyItemRemoved(position);
+        
+        // Save the updated list
+        savePhotos();
+        
         Toast.makeText(this, "Photo deleted", Toast.LENGTH_SHORT).show();
     }
     
@@ -278,6 +427,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 String newDescription = input.getText().toString();
                 photo.setDescription(newDescription);
                 photoAdapter.notifyItemChanged(position);
+                savePhotos();
             }
         });
         
@@ -289,5 +439,31 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         });
         
         builder.show();
+    }
+    
+    private void savePhotos() {
+        SharedPreferences sharedPreferences = getSharedPreferences(PHOTOS_PREFS, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        
+        Gson gson = new Gson();
+        String json = gson.toJson(userPhotoList);
+        
+        // Save photos for the current user
+        editor.putString(PHOTOS_KEY + "_" + userName, json);
+        editor.apply();
+    }
+    
+    private List<UserPhoto> loadPhotos() {
+        SharedPreferences sharedPreferences = getSharedPreferences(PHOTOS_PREFS, Context.MODE_PRIVATE);
+        
+        Gson gson = new Gson();
+        String json = sharedPreferences.getString(PHOTOS_KEY + "_" + userName, "");
+        
+        if (json.isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        Type type = new TypeToken<ArrayList<UserPhoto>>(){}.getType();
+        return gson.fromJson(json, type);
     }
 }
