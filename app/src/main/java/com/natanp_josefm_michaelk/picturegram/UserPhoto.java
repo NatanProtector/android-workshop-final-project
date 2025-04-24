@@ -1,18 +1,24 @@
 package com.natanp_josefm_michaelk.picturegram;
 
+import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
-public class UserPhoto {
+public class UserPhoto implements Serializable {
     private int imageResourceId;
     private String description;
     private Date timestamp;
     private int likeCount;
+    private List<String> likedByUsers; // List of usernames who liked this photo
+    private String filePath; // Path to saved image file (for camera or gallery photos)
 
     public UserPhoto(int imageResourceId) {
         this.imageResourceId = imageResourceId;
         this.description = "";
         this.timestamp = new Date();
         this.likeCount = 0;
+        this.likedByUsers = new ArrayList<>();
     }
 
     public UserPhoto(int imageResourceId, String description) {
@@ -20,6 +26,16 @@ public class UserPhoto {
         this.description = description;
         this.timestamp = new Date();
         this.likeCount = 0;
+        this.likedByUsers = new ArrayList<>();
+    }
+    
+    public UserPhoto(String filePath, String description) {
+        this.imageResourceId = 0; // No resource ID for file-based images
+        this.filePath = filePath;
+        this.description = description;
+        this.timestamp = new Date();
+        this.likeCount = 0;
+        this.likedByUsers = new ArrayList<>();
     }
 
     public int getImageResourceId() {
@@ -28,6 +44,18 @@ public class UserPhoto {
 
     public void setImageResourceId(int imageResourceId) {
         this.imageResourceId = imageResourceId;
+    }
+    
+    public String getFilePath() {
+        return filePath;
+    }
+    
+    public void setFilePath(String filePath) {
+        this.filePath = filePath;
+    }
+    
+    public boolean hasFilePath() {
+        return filePath != null && !filePath.isEmpty();
     }
 
     public String getDescription() {
@@ -52,5 +80,35 @@ public class UserPhoto {
 
     public void setLikeCount(int likeCount) {
         this.likeCount = likeCount;
+    }
+    
+    public boolean isLikedByUser(String username) {
+        return likedByUsers.contains(username);
+    }
+    
+    /**
+     * Toggles the like status for a user.
+     * If the user has already liked the photo, their like is removed.
+     * If the user hasn't liked the photo yet, their like is added.
+     * 
+     * @param username The username of the user toggling the like
+     * @return true if the like state changed (added or removed), false otherwise
+     */
+    public boolean toggleLike(String username) {
+        if (isLikedByUser(username)) {
+            // User already liked this photo - remove the like
+            likedByUsers.remove(username);
+            likeCount--;
+            return true;
+        } else {
+            // User hasn't liked this photo yet - add the like
+            likedByUsers.add(username);
+            likeCount++;
+            return true;
+        }
+    }
+    
+    public List<String> getLikedByUsers() {
+        return likedByUsers;
     }
 } 
