@@ -50,21 +50,43 @@ public class UsersActivity extends AppCompatActivity {
 
         // 5) Create some sample data (User objects)
         userList = new ArrayList<>();
-        userList.add(new User("Alice", R.drawable.my_img1));
-        userList.add(new User("Bob", R.drawable.my_img2));
-        userList.add(new User("Charlie", R.drawable.my_img3));
-        userList.add(new User("Alice", R.drawable.my_img4));
-        userList.add(new User("Bob", R.mipmap.ic_launcher));
-        userList.add(new User("Charlie", R.mipmap.ic_launcher));
-        userList.add(new User("Alice", R.mipmap.ic_launcher));
-        userList.add(new User("Bob", R.mipmap.ic_launcher));
-        userList.add(new User("Charlie", R.mipmap.ic_launcher));
-        userList.add(new User("Alice", R.mipmap.ic_launcher));
-        userList.add(new User("Bob", R.mipmap.ic_launcher));
-        userList.add(new User("Charlie", R.mipmap.ic_launcher));
+        
+        // Create users with sample photos
+        User alice = new User("Alice", R.drawable.my_img1);
+        addSamplePhotosToUser(alice);
+        
+        User bob = new User("Bob", R.drawable.my_img2);
+        addSamplePhotosToUser(bob);
+        
+        User charlie = new User("Charlie", R.drawable.my_img3);
+        addSamplePhotosToUser(charlie);
+        
+        User david = new User("David", R.drawable.my_img4);
+        addSamplePhotosToUser(david);
+        
+        // Add users to the list
+        userList.add(alice);
+        userList.add(bob);
+        userList.add(charlie);
+        userList.add(david);
+        userList.add(new User("Eve", R.mipmap.ic_launcher));
+        userList.add(new User("Frank", R.mipmap.ic_launcher));
+        userList.add(new User("Grace", R.mipmap.ic_launcher));
+        userList.add(new User("Heidi", R.mipmap.ic_launcher));
+        userList.add(new User("Ivan", R.mipmap.ic_launcher));
 
         // 6) Create the adapter and attach it to the RecyclerView
         adapter = new UserAdapter(userList);
         recyclerView.setAdapter(adapter);
+    }
+    
+    private void addSamplePhotosToUser(User user) {
+        // Add some sample photos to the user's gallery
+        user.addPhoto(new UserPhoto(R.drawable.my_img1, "First cat photo"));
+        user.addPhoto(new UserPhoto(R.drawable.my_img2, "Second cat photo"));
+        user.addPhoto(new UserPhoto(R.drawable.my_img3, "Third cat photo"));
+        user.addPhoto(new UserPhoto(R.drawable.my_img4, "Fourth cat photo"));
+        
+        // In a real app, you would load these from a database or storage
     }
 }

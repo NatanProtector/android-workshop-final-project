@@ -43,6 +43,10 @@ public class UserAdapter extends RecyclerView.Adapter<UserAdapter.UserViewHolder
             intent.putExtra("USER_NAME", user.getName());
             intent.putExtra("USER_IMAGE", user.getImageResourceId());
             
+            // We can't directly pass the User object since it's not Parcelable/Serializable,
+            // but in a real app you might use a user ID to fetch the full user data
+            // or implement Parcelable on the User class
+            
             // Start the ProfileActivity
             holder.itemView.getContext().startActivity(intent);
         });
