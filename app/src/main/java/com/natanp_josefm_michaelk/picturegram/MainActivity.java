@@ -50,9 +50,14 @@ public class MainActivity extends AppCompatActivity {
                 Log.d(TAG, "Email: " + email);
                 Log.d(TAG, "Password: " + password); // Be cautious logging passwords in production!
 
-                // Basic validation (you can add more complex logic here)
-                if (email.isEmpty() || password.isEmpty()) {
-                    Toast.makeText(MainActivity.this, "Please enter email and password", Toast.LENGTH_SHORT).show();
+                // Check if both fields are empty
+                if (email.isEmpty() && password.isEmpty()) {
+                    // If both are empty, go to ProfileActivity
+                    Intent intent = new Intent(MainActivity.this, ProfileActivity.class);
+                    startActivity(intent);
+                } else if (email.isEmpty() || password.isEmpty()) {
+                    // If only one is empty, show a toast
+                    Toast.makeText(MainActivity.this, "Please enter both email and password", Toast.LENGTH_SHORT).show();
                 } else {
                     // TODO: Add actual login logic here (e.g., call an API, check database)
                     Toast.makeText(MainActivity.this, "Login details logged", Toast.LENGTH_SHORT).show(); // Inform user action was logged
@@ -68,17 +73,6 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(intent);
             }
         });
-    }
-
-    // The method must match the name from XML and have this exact signature
-    public void openUsersActivity(View view) {
-        Intent intent = new Intent(this, UsersActivity.class);
-        startActivity(intent);
-    }
-
-    public void openSettingsActivity(View view) {
-        Intent intent = new Intent(this, SettingsActivity.class);
-        startActivity(intent);
     }
 
 }

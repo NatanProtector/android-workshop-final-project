@@ -22,6 +22,9 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -31,6 +34,8 @@ import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -55,6 +60,10 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     private static final String PHOTOS_PREFS = "photos_prefs";
     private static final String PHOTOS_KEY = "user_photos";
     
+    // Permission Request Codes
+    private static final int REQUEST_CODE_STORAGE_PERMISSION = 101;
+    private static final int REQUEST_CODE_CAMERA_PERMISSION = 102;
+
     private ImageView profileImageView;
     private TextView profileNameTextView;
     private Button uploadPhotoButton;
@@ -190,6 +199,14 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         });
     }
     
+    private String getStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return Manifest.permission.READ_MEDIA_IMAGES;
+        } else {
+            return Manifest.permission.READ_EXTERNAL_STORAGE;
+        }
+    }
+
     private String saveImageToInternalStorage(Uri imageUri) throws IOException {
         // Get a file name from the URI if possible
         String fileName = getFileNameFromUri(imageUri);
@@ -299,26 +316,42 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     }
     
     private void openGallery() {
-        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-        galleryLauncher.launch(intent);
+        String storagePermission = getStoragePermission();
+        if (ContextCompat.checkSelfPermission(this, storagePermission) == PackageManager.PERMISSION_GRANTED) {
+            // Permission already granted
+            Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+            galleryLauncher.launch(intent);
+        } else {
+            // Request permission
+            ActivityCompat.requestPermissions(this, new String[]{storagePermission}, REQUEST_CODE_STORAGE_PERMISSION);
+        }
     }
     
     private void openCamera() {
         Log.d(TAG, "openCamera called");
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            // Permission already granted, proceed with camera logic
+            launchCameraIntent();
+        } else {
+            // Request permission
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, REQUEST_CODE_CAMERA_PERMISSION);
+        }
+    }
+    
+    // Separated camera intent launching logic
+    private void launchCameraIntent() {
         try {
             // Create a file to save the image
             File photoFile = createImageFile();
             currentPhotoPath = photoFile.getAbsolutePath();
-            
             Log.d(TAG, "Created image file at: " + currentPhotoPath);
-            
+
             // Get URI for the file using FileProvider
             currentPhotoUri = FileProvider.getUriForFile(this,
                     "com.natanp_josefm_michaelk.picturegram.fileprovider",
                     photoFile);
-            
             Log.d(TAG, "FileProvider URI: " + currentPhotoUri);
-            
+
             // Launch camera
             cameraLauncher.launch(currentPhotoUri);
         } catch (IOException ex) {
@@ -465,5 +498,39 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         
         Type type = new TypeToken<ArrayList<UserPhoto>>(){}.getType();
         return gson.fromJson(json, type);
+    }
+
+    public void openUsersActivityFromProfile(View view) {
+        Intent intent = new Intent(this, UsersActivity.class);
+        startActivity(intent);
+    }
+
+    public void openSettingsActivityFromProfile(View view) {
+        Intent intent = new Intent(this, SettingsActivity.class);
+        startActivity(intent);
+    }
+
+    // Handle permission request results
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == REQUEST_CODE_STORAGE_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Storage permission granted, open gallery
+                openGallery();
+            } else {
+                // Storage permission denied
+                Toast.makeText(this, "Storage permission is required to choose photos from gallery.", Toast.LENGTH_SHORT).show();
+            }
+        } else if (requestCode == REQUEST_CODE_CAMERA_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Camera permission granted, launch camera
+                launchCameraIntent();
+            } else {
+                // Camera permission denied
+                Toast.makeText(this, "Camera permission is required to take photos.", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 }
