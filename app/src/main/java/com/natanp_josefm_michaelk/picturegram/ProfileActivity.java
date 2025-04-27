@@ -1,14 +1,11 @@
 package com.natanp_josefm_michaelk.picturegram;
 
 import android.app.AlertDialog;
-import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -41,7 +38,6 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -64,22 +60,17 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     private static final int REQUEST_CODE_STORAGE_PERMISSION = 101;
     private static final int REQUEST_CODE_CAMERA_PERMISSION = 102;
 
-    private ImageView profileImageView;
-    private TextView profileNameTextView;
-    private Button uploadPhotoButton;
     private RecyclerView photosRecyclerView;
     private PhotoAdapter photoAdapter;
     
     private List<UserPhoto> userPhotoList;
     private String userName;
-    private int profileImageId;
-    
+
     private ActivityResultLauncher<Intent> photoSelectionLauncher;
     private ActivityResultLauncher<Intent> galleryLauncher;
     private ActivityResultLauncher<Uri> cameraLauncher;
     private Uri currentPhotoUri;
     private String currentPhotoPath;
-    private ItemTouchHelper touchHelper;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,14 +78,14 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         setContentView(R.layout.activity_profile);
 
         // Get views
-        profileImageView = findViewById(R.id.profileImageView);
-        profileNameTextView = findViewById(R.id.profileNameTextView);
-        uploadPhotoButton = findViewById(R.id.uploadPhotoButton);
+        ImageView profileImageView = findViewById(R.id.profileImageView);
+        TextView profileNameTextView = findViewById(R.id.profileNameTextView);
+        Button uploadPhotoButton = findViewById(R.id.uploadPhotoButton);
         photosRecyclerView = findViewById(R.id.photosRecyclerView);
 
         // Get the data passed from the adapter
         userName = getIntent().getStringExtra("USER_NAME");
-        profileImageId = getIntent().getIntExtra("USER_IMAGE", R.mipmap.ic_launcher);
+        int profileImageId = getIntent().getIntExtra("USER_IMAGE", R.mipmap.ic_launcher);
 
         // Set the data to the views
         profileNameTextView.setText(userName);
@@ -285,8 +276,8 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 // Not used for drag & drop
             }
         };
-        
-        touchHelper = new ItemTouchHelper(callback);
+
+        ItemTouchHelper touchHelper = new ItemTouchHelper(callback);
         touchHelper.attachToRecyclerView(photosRecyclerView);
         photoAdapter.setTouchHelper(touchHelper);
     }

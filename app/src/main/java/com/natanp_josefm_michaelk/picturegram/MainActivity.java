@@ -3,17 +3,12 @@ package com.natanp_josefm_michaelk.picturegram;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 
 /*  Notes:
  *  - changing screen orientation of screen destroys and creates the screen, must save info and reload
@@ -40,38 +35,32 @@ public class MainActivity extends AppCompatActivity {
         buttonLogin = findViewById(R.id.buttonLogin);
         textViewRegisterLink = findViewById(R.id.textViewRegisterLink);
 
-        buttonLogin.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                String email = editTextEmail.getText().toString();
-                String password = editTextPassword.getText().toString();
+        buttonLogin.setOnClickListener(v -> {
+            String email = editTextEmail.getText().toString();
+            String password = editTextPassword.getText().toString();
 
-                // Log the inputs
-                Log.d(TAG, "Email: " + email);
-                Log.d(TAG, "Password: " + password); // Be cautious logging passwords in production!
+            // Log the inputs
+            Log.d(TAG, "Email: " + email);
+            Log.d(TAG, "Password: " + password); // Be cautious logging passwords in production!
 
-                // Check if both fields are empty
-                if (email.isEmpty() && password.isEmpty()) {
-                    // If both are empty, go to ProfileActivity
-                    Intent intent = new Intent(MainActivity.this, ProfileActivity.class);
-                    startActivity(intent);
-                } else if (email.isEmpty() || password.isEmpty()) {
-                    // If only one is empty, show a toast
-                    Toast.makeText(MainActivity.this, "Please enter both email and password", Toast.LENGTH_SHORT).show();
-                } else {
-                    // TODO: Add actual login logic here (e.g., call an API, check database)
-                    Toast.makeText(MainActivity.this, "Login details logged", Toast.LENGTH_SHORT).show(); // Inform user action was logged
-                }
+            // Check if both fields are empty
+            if (email.isEmpty() && password.isEmpty()) {
+                // If both are empty, go to ProfileActivity
+                Intent intent = new Intent(MainActivity.this, ProfileActivity.class);
+                startActivity(intent);
+            } else if (email.isEmpty() || password.isEmpty()) {
+                // If only one is empty, show a toast
+                Toast.makeText(MainActivity.this, "Please enter both email and password", Toast.LENGTH_SHORT).show();
+            } else {
+                // TODO: Add actual login logic here (e.g., call an API, check database)
+                Toast.makeText(MainActivity.this, "Login details logged", Toast.LENGTH_SHORT).show(); // Inform user action was logged
             }
         });
 
-        textViewRegisterLink.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // Intent to start RegisterActivity
-                Intent intent = new Intent(MainActivity.this, RegisterActivity.class);
-                startActivity(intent);
-            }
+        textViewRegisterLink.setOnClickListener(v -> {
+            // Intent to start RegisterActivity
+            Intent intent = new Intent(MainActivity.this, RegisterActivity.class);
+            startActivity(intent);
         });
     }
 
