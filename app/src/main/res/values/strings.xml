@@ -8,5 +8,6 @@
     <string name="email">Email</string>
     <string name="picturegram_login">PictureGram Login</string>
     <string name="login">Login</string>
+    <string name="users">Search Users</string>
 </resources>
 
