@@ -1,5 +1,7 @@
 package com.natanp_josefm_michaelk.picturegram;
 
+import com.google.firebase. auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -77,11 +79,28 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_profile);
 
+        TextView notAuthenticatedTextView = findViewById(R.id.notAuthenticatedTextView);
+        androidx.constraintlayout.widget.Group profileContentGroup = findViewById(R.id.profileContentGroup);
+
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user == null) {
+            // User is NOT signed in
+            notAuthenticatedTextView.setVisibility(View.VISIBLE);
+            profileContentGroup.setVisibility(View.GONE);
+            return; // Stop further initialization
+        } else {
+            // User is signed in
+            notAuthenticatedTextView.setVisibility(View.GONE);
+            profileContentGroup.setVisibility(View.VISIBLE);
+        }
+
         // Get views
         ImageView profileImageView = findViewById(R.id.profileImageView);
         TextView profileNameTextView = findViewById(R.id.profileNameTextView);
         Button uploadPhotoButton = findViewById(R.id.uploadPhotoButton);
         photosRecyclerView = findViewById(R.id.photosRecyclerView);
+        Button settingsButton = findViewById(R.id.settingsButton);
+        Button addFriendButton = findViewById(R.id.addFriendButton);
 
         // Get the data passed from the adapter
         userName = getIntent().getStringExtra("USER_NAME");
@@ -90,6 +109,28 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         // Set the data to the views
         profileNameTextView.setText(userName);
         profileImageView.setImageResource(profileImageId);
+        
+        // Check if this profile belongs to the current user
+        String currentUserName = (user != null && user.getDisplayName() != null) ? user.getDisplayName() : "";
+        if (userName != null && userName.equals(currentUserName)) {
+            // It's the current user's profile
+            settingsButton.setVisibility(View.VISIBLE);
+            addFriendButton.setVisibility(View.GONE);
+            // Optionally allow uploading only on own profile
+            // uploadPhotoButton.setVisibility(View.VISIBLE);
+        } else {
+            // It's someone else's profile
+            settingsButton.setVisibility(View.GONE);
+            addFriendButton.setVisibility(View.VISIBLE);
+            // Optionally hide uploading on other profiles
+            // uploadPhotoButton.setVisibility(View.GONE);
+        }
+
+        // Set listener for Add Friend button
+        addFriendButton.setOnClickListener(v -> {
+            // TODO: Implement actual friend request logic
+            Toast.makeText(ProfileActivity.this, "Friend request sent to " + userName, Toast.LENGTH_SHORT).show();
+        });
         
         // Initialize photo list
         userPhotoList = loadPhotos();
