@@ -6,7 +6,28 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".MainActivity">
+    tools:context=".UsersActivity">
+
+    <TextView
+        android:id="@+id/notAuthenticatedTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="NOT AUTHENTICATED"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible" />
+
+    <androidx.constraintlayout.widget.Group
+        android:id="@+id/usersContentGroup"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:constraint_referenced_ids="searchBarContainer,recyclerView"
+         />
 
     <!-- A simple "search bar" container -->
     <LinearLayout

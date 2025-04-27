@@ -2,6 +2,7 @@ package com.natanp_josefm_michaelk.picturegram;
 
 import android.graphics.Color;
 import android.net.Uri;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -11,7 +12,6 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -54,19 +54,67 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
     public void onBindViewHolder(@NonNull PhotoViewHolder holder, int position) {
         UserPhoto photo = photoList.get(position);
         
-        // Set image - check if it's a resource or a file
+        // *** Add this: Reset ImageView to a known state before loading ***
+        holder.photoImageView.setImageResource(0); // Clear previous image
+        // Or set a placeholder: 
+        // holder.photoImageView.setImageResource(R.drawable.placeholder_image); 
+        
+        // Set image - check if it's a resource or a file/URI
         if (photo.hasFilePath()) {
-            // Load from file
-            File imageFile = new File(photo.getFilePath());
-            if (imageFile.exists()) {
-                holder.photoImageView.setImageURI(Uri.fromFile(imageFile));
-            } else {
-                // Fallback to a default image if file doesn't exist
-                holder.photoImageView.setImageResource(R.drawable.my_img1);
+            // Load from file path or URI string
+            String pathOrUri = photo.getFilePath();
+            try {
+                Uri imageUri;
+                // Check if it's a content URI or file URI before parsing
+                if (pathOrUri.startsWith("content://") || pathOrUri.startsWith("file://")) {
+                    imageUri = Uri.parse(pathOrUri);
+                } else {
+                    // Assume it's a plain file path
+                    File imageFile = new File(pathOrUri);
+                    if (!imageFile.exists()) {
+                        // Fallback if file doesn't exist
+                        holder.photoImageView.setImageResource(R.drawable.my_img1); // Or some placeholder
+                        Log.w("PhotoAdapter", "File not found: " + pathOrUri + ". Loading fallback.");
+                        // Skip the rest of the image loading for this item
+                        // You might want to handle description/likes differently here too
+                        // Set description (if available)
+                        if (photo.getDescription() != null && !photo.getDescription().isEmpty()) {
+                            holder.photoDescriptionTextView.setVisibility(View.VISIBLE);
+                            holder.photoDescriptionTextView.setText(photo.getDescription());
+                        } else {
+                            holder.photoDescriptionTextView.setText("No description (File Error)");
+                            holder.photoDescriptionTextView.setVisibility(View.VISIBLE);
+                        }
+                        // Reset like state appearance
+                        holder.likeImageView.setImageResource(android.R.drawable.btn_star_big_off);
+                        holder.likeImageView.clearColorFilter();
+                        holder.likeCountTextView.setText("0");
+                        // Clear listeners or disable buttons if needed
+                        holder.photoImageView.setOnClickListener(null);
+                        holder.likeImageView.setOnClickListener(null);
+                        holder.deletePhotoButton.setOnClickListener(null);
+                        holder.editDescriptionButton.setOnClickListener(null);
+                        holder.dragHandleButton.setOnTouchListener(null);
+                        return; // Stop processing this item further
+                    }
+                    imageUri = Uri.fromFile(imageFile);
+                }
+                holder.photoImageView.setImageURI(imageUri);
+            } catch (Exception e) {
+                Log.e("PhotoAdapter", "Error loading image URI: " + pathOrUri, e);
+                // Fallback to a default image on any error
+                holder.photoImageView.setImageResource(R.drawable.my_img1); // Or some placeholder
             }
         } else {
             // Load from resource
-            holder.photoImageView.setImageResource(photo.getImageResourceId());
+            // *** Optional: Check if resource ID is valid before setting ***
+            if (photo.getImageResourceId() != 0) {
+                holder.photoImageView.setImageResource(photo.getImageResourceId());
+            } else {
+                // Handle case where it's not a file path but resource ID is 0 (shouldn't happen ideally)
+                Log.w("PhotoAdapter", "UserPhoto has no file path and resource ID is 0 at position: " + position);
+                holder.photoImageView.setImageResource(R.drawable.my_img1); // Fallback
+            }
         }
         
         // Set description (if available)

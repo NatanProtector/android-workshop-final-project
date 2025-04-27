@@ -2,6 +2,8 @@ package com.natanp_josefm_michaelk.picturegram;
 
 
 import android.os.Bundle;
+import android.view.View;
+import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -14,6 +16,9 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.natanp_josefm_michaelk.picturegram.R;
 import com.natanp_josefm_michaelk.picturegram.User;
 import com.natanp_josefm_michaelk.picturegram.UserAdapter;
+
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +39,23 @@ public class UsersActivity extends AppCompatActivity {
 
         // 2) Inflate the layout that contains the RecyclerView
         setContentView(R.layout.activity_users);
+        
+        TextView notAuthenticatedTextView = findViewById(R.id.notAuthenticatedTextView);
+        androidx.constraintlayout.widget.Group usersContentGroup = findViewById(R.id.usersContentGroup);
+        
+        FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
+        if (currentUser == null) {
+            // User is NOT signed in
+            notAuthenticatedTextView.setVisibility(View.VISIBLE);
+            usersContentGroup.setVisibility(View.GONE);
+            // Optional: Disable EdgeToEdge or other UI setup if needed
+            // EdgeToEdge.disable(this);
+            return; // Stop further setup if not authenticated
+        } else {
+            // User is signed in
+            notAuthenticatedTextView.setVisibility(View.GONE);
+            usersContentGroup.setVisibility(View.VISIBLE);
+        }
 
         // If you have code for handling window insets:
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
