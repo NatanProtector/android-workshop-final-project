@@ -117,12 +117,14 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             addFriendButton.setVisibility(View.GONE);
             // Optionally allow uploading only on own profile
             uploadPhotoButton.setVisibility(View.VISIBLE);
+            uploadPhotoButton.setEnabled(true);
         } else {
             // It's someone else's profile
             settingsButton.setVisibility(View.GONE);
             addFriendButton.setVisibility(View.VISIBLE);
             // Optionally hide uploading on other profiles
             uploadPhotoButton.setVisibility(View.GONE);
+            uploadPhotoButton.setEnabled(false);
         }
 
         // Set listener for Add Friend button
