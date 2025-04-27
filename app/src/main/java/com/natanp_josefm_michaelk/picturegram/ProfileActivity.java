@@ -68,7 +68,6 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     private List<UserPhoto> userPhotoList;
     private String userName;
 
-    private ActivityResultLauncher<Intent> photoSelectionLauncher;
     private ActivityResultLauncher<Intent> galleryLauncher;
     private ActivityResultLauncher<Uri> cameraLauncher;
     private Uri currentPhotoUri;
@@ -117,13 +116,13 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             settingsButton.setVisibility(View.VISIBLE);
             addFriendButton.setVisibility(View.GONE);
             // Optionally allow uploading only on own profile
-            // uploadPhotoButton.setVisibility(View.VISIBLE);
+            uploadPhotoButton.setVisibility(View.VISIBLE);
         } else {
             // It's someone else's profile
             settingsButton.setVisibility(View.GONE);
             addFriendButton.setVisibility(View.VISIBLE);
             // Optionally hide uploading on other profiles
-            // uploadPhotoButton.setVisibility(View.GONE);
+            uploadPhotoButton.setVisibility(View.GONE);
         }
 
         // Set listener for Add Friend button
@@ -134,10 +133,6 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         
         // Initialize photo list
         userPhotoList = loadPhotos();
-        if (userPhotoList.isEmpty()) {
-            // Only add sample photos if no saved photos exist
-            addSamplePhotos();
-        }
         
         // Setup RecyclerView for photos with a grid layout
         GridLayoutManager layoutManager = new GridLayoutManager(this, 3);
@@ -150,25 +145,6 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         // Setup item touch helper for drag and drop reordering
         setupItemTouchHelper();
         
-        // Register for activity result to get selected photos
-        photoSelectionLauncher = registerForActivityResult(
-                new ActivityResultContracts.StartActivityForResult(),
-                result -> {
-                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                        ArrayList<Integer> selectedPhotoIds = result.getData().getIntegerArrayListExtra("SELECTED_PHOTOS");
-                        if (selectedPhotoIds != null && !selectedPhotoIds.isEmpty()) {
-                            // Add the selected photos to the user's gallery
-                            for (Integer photoId : selectedPhotoIds) {
-                                UserPhoto newPhoto = new UserPhoto(photoId);
-                                userPhotoList.add(newPhoto);
-                            }
-                            photoAdapter.notifyDataSetChanged();
-                            savePhotos();
-                            Toast.makeText(this, selectedPhotoIds.size() + " photos added", Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                });
-
         // Register for gallery photo selection
         galleryLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
@@ -324,7 +300,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     }
     
     private void showPhotoSourceDialog() {
-        String[] options = {"Choose from Gallery", "Take Photo", "Choose from Sample Photos"};
+        String[] options = {"Choose from Gallery", "Take Photo"};
         
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Add Photo");
@@ -337,9 +313,6 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                         break;
                     case 1: // Camera
                         openCamera();
-                        break;
-                    case 2: // Sample photos
-                        openSamplePhotos();
                         break;
                 }
             }
@@ -417,22 +390,6 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         return image;
     }
     
-    private void openSamplePhotos() {
-        Intent intent = new Intent(ProfileActivity.this, PhotoSelectionActivity.class);
-        photoSelectionLauncher.launch(intent);
-    }
-    
-    private void addSamplePhotos() {
-        // Add some sample photos from our drawable resources
-        userPhotoList.add(new UserPhoto(R.drawable.my_img1, "My first photo"));
-        userPhotoList.add(new UserPhoto(R.drawable.my_img2, "Another cute cat"));
-        userPhotoList.add(new UserPhoto(R.drawable.my_img3));
-        userPhotoList.add(new UserPhoto(R.drawable.my_img4, "Just chillin'"));
-        
-        // Save the sample photos
-        savePhotos();
-    }
-
     @Override
     public void onPhotoClick(UserPhoto photo, int position) {
         // In a full implementation, this would open a detail view of the photo
