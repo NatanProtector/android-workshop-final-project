@@ -12,6 +12,9 @@ public class UserPhoto implements Serializable {
     private int likeCount;
     private List<String> likedByUsers; // List of usernames who liked this photo
     private String filePath; // Path to saved image file (for camera or gallery photos)
+    private String storageUrl; // Firebase Storage URL
+    private String authorId;   // Firebase user ID of the author
+    private String authorName; // Display name of the author
 
     public UserPhoto(int imageResourceId) {
         this.imageResourceId = imageResourceId;
@@ -29,13 +32,15 @@ public class UserPhoto implements Serializable {
         this.likedByUsers = new ArrayList<>();
     }
     
-    public UserPhoto(String filePath, String description) {
-        this.imageResourceId = 0; // No resource ID for file-based images
+    public UserPhoto(String filePath, String description, String authorId, String authorName) {
+        this.imageResourceId = 0;
         this.filePath = filePath;
         this.description = description;
         this.timestamp = new Date();
         this.likeCount = 0;
         this.likedByUsers = new ArrayList<>();
+        this.authorId = authorId;
+        this.authorName = authorName;
     }
 
     public int getImageResourceId() {
@@ -110,5 +115,33 @@ public class UserPhoto implements Serializable {
     
     public List<String> getLikedByUsers() {
         return likedByUsers;
+    }
+
+    public String getStorageUrl() {
+        return storageUrl;
+    }
+
+    public void setStorageUrl(String storageUrl) {
+        this.storageUrl = storageUrl;
+    }
+
+    public String getAuthorId() {
+        return authorId;
+    }
+
+    public void setAuthorId(String authorId) {
+        this.authorId = authorId;
+    }
+
+    public String getAuthorName() {
+        return authorName;
+    }
+
+    public void setAuthorName(String authorName) {
+        this.authorName = authorName;
+    }
+
+    public boolean isAuthor(String userId) {
+        return authorId != null && authorId.equals(userId);
     }
 } 
