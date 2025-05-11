@@ -18,12 +18,17 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.io.File;
 import java.util.List;
 
+import com.bumptech.glide.Glide;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+
 public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHolder> {
     
     private List<UserPhoto> photoList;
     private OnPhotoClickListener listener;
     private ItemTouchHelper touchHelper;
     private String currentUsername; // Username of the current user
+    private FirebaseAuth auth;
     
     public interface OnPhotoClickListener {
         void onPhotoClick(UserPhoto photo, int position);
@@ -36,6 +41,7 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
         this.photoList = photoList;
         this.listener = listener;
         this.currentUsername = username;
+        this.auth = FirebaseAuth.getInstance();
     }
     
     public void setTouchHelper(ItemTouchHelper touchHelper) {
@@ -53,71 +59,62 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
     @Override
     public void onBindViewHolder(@NonNull PhotoViewHolder holder, int position) {
         UserPhoto photo = photoList.get(position);
+        FirebaseUser currentUser = auth.getCurrentUser();
+        boolean isAuthor = currentUser != null && photo.isAuthor(currentUser.getUid());
         
-        // *** Add this: Reset ImageView to a known state before loading ***
-        holder.photoImageView.setImageResource(0); // Clear previous image
-        // Or set a placeholder: 
-        // holder.photoImageView.setImageResource(R.drawable.placeholder_image); 
+        // Show/hide edit and delete buttons based on author status
+        holder.deletePhotoButton.setVisibility(isAuthor ? View.VISIBLE : View.GONE);
+        holder.editDescriptionButton.setVisibility(isAuthor ? View.VISIBLE : View.GONE);
         
-        // Set image - check if it's a resource or a file/URI
-        if (photo.hasFilePath()) {
-            // Load from file path or URI string
+        // Reset ImageView
+        holder.photoImageView.setImageResource(0);
+        
+        // Load image from Firebase Storage URL if available
+        if (photo.getStorageUrl() != null && !photo.getStorageUrl().isEmpty()) {
+            Glide.with(holder.itemView.getContext())
+                .load(photo.getStorageUrl())
+                .centerCrop()
+                .placeholder(R.drawable.my_img1)
+                .error(R.drawable.my_img1)
+                .into(holder.photoImageView);
+        }
+        // Fallback to file path if no storage URL
+        else if (photo.hasFilePath()) {
             String pathOrUri = photo.getFilePath();
             try {
                 Uri imageUri;
-                // Check if it's a content URI or file URI before parsing
                 if (pathOrUri.startsWith("content://") || pathOrUri.startsWith("file://")) {
                     imageUri = Uri.parse(pathOrUri);
                 } else {
-                    // Assume it's a plain file path
                     File imageFile = new File(pathOrUri);
                     if (!imageFile.exists()) {
-                        // Fallback if file doesn't exist
-                        holder.photoImageView.setImageResource(R.drawable.my_img1); // Or some placeholder
-                        Log.w("PhotoAdapter", "File not found: " + pathOrUri + ". Loading fallback.");
-                        // Skip the rest of the image loading for this item
-                        // You might want to handle description/likes differently here too
-                        // Set description (if available)
-                        if (photo.getDescription() != null && !photo.getDescription().isEmpty()) {
-                            holder.photoDescriptionTextView.setVisibility(View.VISIBLE);
-                            holder.photoDescriptionTextView.setText(photo.getDescription());
-                        } else {
-                            holder.photoDescriptionTextView.setText("No description (File Error)");
-                            holder.photoDescriptionTextView.setVisibility(View.VISIBLE);
-                        }
-                        // Reset like state appearance
-                        holder.likeImageView.setImageResource(android.R.drawable.btn_star_big_off);
-                        holder.likeImageView.clearColorFilter();
-                        holder.likeCountTextView.setText("0");
-                        // Clear listeners or disable buttons if needed
-                        holder.photoImageView.setOnClickListener(null);
-                        holder.likeImageView.setOnClickListener(null);
-                        holder.deletePhotoButton.setOnClickListener(null);
-                        holder.editDescriptionButton.setOnClickListener(null);
-                        holder.dragHandleButton.setOnTouchListener(null);
-                        return; // Stop processing this item further
+                        holder.photoImageView.setImageResource(R.drawable.my_img1);
+                        Log.w("PhotoAdapter", "File not found: " + pathOrUri);
+                        return;
                     }
                     imageUri = Uri.fromFile(imageFile);
                 }
-                holder.photoImageView.setImageURI(imageUri);
+                Glide.with(holder.itemView.getContext())
+                    .load(imageUri)
+                    .centerCrop()
+                    .placeholder(R.drawable.my_img1)
+                    .error(R.drawable.my_img1)
+                    .into(holder.photoImageView);
             } catch (Exception e) {
-                Log.e("PhotoAdapter", "Error loading image URI: " + pathOrUri, e);
-                // Fallback to a default image on any error
-                holder.photoImageView.setImageResource(R.drawable.my_img1); // Or some placeholder
-            }
-        } else {
-            // Load from resource
-            // *** Optional: Check if resource ID is valid before setting ***
-            if (photo.getImageResourceId() != 0) {
-                holder.photoImageView.setImageResource(photo.getImageResourceId());
-            } else {
-                // Handle case where it's not a file path but resource ID is 0 (shouldn't happen ideally)
-                Log.w("PhotoAdapter", "UserPhoto has no file path and resource ID is 0 at position: " + position);
-                holder.photoImageView.setImageResource(R.drawable.my_img1); // Fallback
+                Log.e("PhotoAdapter", "Error loading image: " + e.getMessage());
+                holder.photoImageView.setImageResource(R.drawable.my_img1);
             }
         }
+        // Fallback to resource ID
+        else if (photo.getImageResourceId() != 0) {
+            holder.photoImageView.setImageResource(photo.getImageResourceId());
+        }
+        // Final fallback
+        else {
+            holder.photoImageView.setImageResource(R.drawable.my_img1);
+        }
         
-        // Set description (if available)
+        // Set description
         if (photo.getDescription() != null && !photo.getDescription().isEmpty()) {
             holder.photoDescriptionTextView.setVisibility(View.VISIBLE);
             holder.photoDescriptionTextView.setText(photo.getDescription());
@@ -126,16 +123,12 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
             holder.photoDescriptionTextView.setVisibility(View.VISIBLE);
         }
         
-        // Set like count
+        // Set like count and state
         holder.likeCountTextView.setText(String.valueOf(photo.getLikeCount()));
-        
-        // Set like icon appearance based on whether the current user has liked the photo
         if (photo.isLikedByUser(currentUsername)) {
-            // User has liked this photo - show filled red heart
             holder.likeImageView.setImageResource(android.R.drawable.btn_star_big_on);
             holder.likeImageView.setColorFilter(Color.RED);
         } else {
-            // User hasn't liked this photo - show empty heart
             holder.likeImageView.setImageResource(android.R.drawable.btn_star_big_off);
             holder.likeImageView.clearColorFilter();
         }
@@ -154,20 +147,21 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
         });
         
         holder.deletePhotoButton.setOnClickListener(v -> {
-            if (listener != null) {
+            if (listener != null && isAuthor) {
                 listener.onDeleteClick(photo, holder.getAdapterPosition());
             }
         });
         
         holder.editDescriptionButton.setOnClickListener(v -> {
-            if (listener != null) {
+            if (listener != null && isAuthor) {
                 listener.onEditDescriptionClick(photo, holder.getAdapterPosition());
             }
         });
         
-        // Set drag handle touch listener
+        // Set drag handle touch listener (only for author)
+        holder.dragHandleButton.setVisibility(isAuthor ? View.VISIBLE : View.GONE);
         holder.dragHandleButton.setOnTouchListener((v, event) -> {
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN && isAuthor) {
                 if (touchHelper != null) {
                     touchHelper.startDrag(holder);
                 }

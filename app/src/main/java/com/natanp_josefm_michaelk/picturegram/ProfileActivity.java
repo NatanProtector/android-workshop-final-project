@@ -38,6 +38,9 @@ import androidx.core.content.ContextCompat;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -51,6 +54,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.OnPhotoClickListener {
 
@@ -73,10 +77,17 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     private Uri currentPhotoUri;
     private String currentPhotoPath;
 
+    private FirebaseStorage storage;
+    private FirebaseAuth auth;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_profile);
+
+        // Initialize Firebase instances
+        storage = FirebaseStorage.getInstance();
+        auth = FirebaseAuth.getInstance();
 
         TextView notAuthenticatedTextView = findViewById(R.id.notAuthenticatedTextView);
         androidx.constraintlayout.widget.Group profileContentGroup = findViewById(R.id.profileContentGroup);
@@ -128,6 +139,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         }
 
         // Set listener for Add Friend button
+        addFriendButton.setText("Follow");
         addFriendButton.setOnClickListener(v -> {
             // TODO: Implement actual friend request logic
             Toast.makeText(ProfileActivity.this, "Friend request sent to " + userName, Toast.LENGTH_SHORT).show();
@@ -148,57 +160,10 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         setupItemTouchHelper();
         
         // Register for gallery photo selection
-        galleryLauncher = registerForActivityResult(
-                new ActivityResultContracts.StartActivityForResult(),
-                result -> {
-                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                        Uri selectedImageUri = result.getData().getData();
-                        if (selectedImageUri != null) {
-                            try {
-                                // Copy the file to our app's storage
-                                String filePath = saveImageToInternalStorage(selectedImageUri);
-                                
-                                // Create a new UserPhoto with the file path
-                                UserPhoto newPhoto = new UserPhoto(filePath, "Photo from gallery");
-                                userPhotoList.add(newPhoto);
-                                photoAdapter.notifyItemInserted(userPhotoList.size() - 1);
-                                savePhotos();
-                                Toast.makeText(this, "Photo added from gallery", Toast.LENGTH_SHORT).show();
-                            } catch (IOException e) {
-                                Log.e(TAG, "Error saving image: " + e.getMessage());
-                                Toast.makeText(this, "Failed to save image", Toast.LENGTH_SHORT).show();
-                            }
-                        }
-                    }
-                });
+        setupGalleryLauncher();
 
         // Register for camera photo capture
-        cameraLauncher = registerForActivityResult(
-                new ActivityResultContracts.TakePicture(),
-                success -> {
-                    if (success && currentPhotoUri != null) {
-                        try {
-                            Log.d(TAG, "Camera photo captured successfully at: " + currentPhotoPath);
-                            
-                            // Create a new UserPhoto with the file path
-                            UserPhoto newPhoto = new UserPhoto(currentPhotoPath, "Photo from camera");
-                            userPhotoList.add(newPhoto);
-                            photoAdapter.notifyItemInserted(userPhotoList.size() - 1);
-                            savePhotos();
-                            
-                            // Display success message
-                            Toast.makeText(this, "Photo captured and saved successfully", Toast.LENGTH_SHORT).show();
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error processing camera image: " + e.getMessage(), e);
-                            Toast.makeText(this, "Failed to process camera image: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                        }
-                    } else {
-                        Log.e(TAG, "Camera capture failed or canceled: success=" + success + ", uri=" + currentPhotoUri);
-                        if (!success) {
-                            Toast.makeText(this, "Failed to capture photo", Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                });
+        setupCameraLauncher();
         
         // Set upload button listener
         uploadPhotoButton.setOnClickListener(new View.OnClickListener() {
@@ -416,26 +381,44 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     
     @Override
     public void onDeleteClick(UserPhoto photo, int position) {
-        // If it's a file-based photo, delete the actual file
-        if (photo.hasFilePath()) {
-            File photoFile = new File(photo.getFilePath());
-            if (photoFile.exists()) {
-                photoFile.delete();
-            }
+        FirebaseUser currentUser = auth.getCurrentUser();
+        if (currentUser == null || !photo.isAuthor(currentUser.getUid())) {
+            Toast.makeText(this, "Only the author can delete the photo", Toast.LENGTH_SHORT).show();
+            return;
         }
-        
-        // Remove the photo from the list
-        userPhotoList.remove(position);
-        photoAdapter.notifyItemRemoved(position);
-        
-        // Save the updated list
-        savePhotos();
-        
-        Toast.makeText(this, "Photo deleted", Toast.LENGTH_SHORT).show();
+
+        // Show confirmation dialog
+        new AlertDialog.Builder(this)
+            .setTitle("Delete Photo")
+            .setMessage("Are you sure you want to delete this photo?")
+            .setPositiveButton("Delete", (dialog, which) -> {
+                // Delete from Firebase Storage if URL exists
+                if (photo.getStorageUrl() != null) {
+                    StorageReference photoRef = storage.getReferenceFromUrl(photo.getStorageUrl());
+                    photoRef.delete().addOnCompleteListener(task -> {
+                        if (task.isSuccessful()) {
+                            deletePhotoFromList(photo, position);
+                        } else {
+                            Toast.makeText(this, "Failed to delete photo from storage", 
+                                Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                } else {
+                    deletePhotoFromList(photo, position);
+                }
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
     }
     
     @Override
     public void onEditDescriptionClick(UserPhoto photo, int position) {
+        FirebaseUser currentUser = auth.getCurrentUser();
+        if (currentUser == null || !photo.isAuthor(currentUser.getUid())) {
+            Toast.makeText(this, "Only the author can edit the description", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         // Show dialog to edit description
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Edit Description");
@@ -445,22 +428,14 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         input.setText(photo.getDescription());
         builder.setView(input);
         
-        builder.setPositiveButton("Save", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                String newDescription = input.getText().toString();
-                photo.setDescription(newDescription);
-                photoAdapter.notifyItemChanged(position);
-                savePhotos();
-            }
+        builder.setPositiveButton("Save", (dialog, which) -> {
+            String newDescription = input.getText().toString();
+            photo.setDescription(newDescription);
+            photoAdapter.notifyItemChanged(position);
+            savePhotos();
         });
         
-        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                dialog.cancel();
-            }
-        });
+        builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
         
         builder.show();
     }
@@ -523,5 +498,174 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 Toast.makeText(this, "Camera permission is required to take photos.", Toast.LENGTH_SHORT).show();
             }
         }
+    }
+
+    private void uploadPhotoToFirebase(Uri imageUri, String description, OnPhotoUploadListener listener) {
+        FirebaseUser currentUser = auth.getCurrentUser();
+        if (currentUser == null) {
+            Toast.makeText(this, "You must be logged in to upload photos", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Show loading indicator
+        Toast.makeText(this, "Uploading photo...", Toast.LENGTH_SHORT).show();
+
+        try {
+            // Create a unique filename with user ID to avoid conflicts
+            String filename = currentUser.getUid() + "/" + UUID.randomUUID().toString() + ".jpg";
+            StorageReference photoRef = storage.getReference().child("photos/" + filename);
+
+            Log.d(TAG, "Starting upload to: " + photoRef.getPath());
+
+            // Upload the file
+            UploadTask uploadTask = photoRef.putFile(imageUri);
+            
+            // Add progress listener
+            uploadTask.addOnProgressListener(taskSnapshot -> {
+                double progress = (100.0 * taskSnapshot.getBytesTransferred()) / taskSnapshot.getTotalByteCount();
+                Log.d(TAG, "Upload progress: " + progress + "%");
+            });
+
+            uploadTask.continueWithTask(task -> {
+                if (!task.isSuccessful()) {
+                    Log.e(TAG, "Upload failed: " + task.getException().getMessage(), task.getException());
+                    throw task.getException();
+                }
+                Log.d(TAG, "Upload completed, getting download URL");
+                return photoRef.getDownloadUrl();
+            }).addOnCompleteListener(task -> {
+                if (task.isSuccessful()) {
+                    Uri downloadUri = task.getResult();
+                    Log.d(TAG, "Got download URL: " + downloadUri);
+                    
+                    // Create new photo with Firebase Storage URL
+                    UserPhoto newPhoto = new UserPhoto(
+                        imageUri.toString(),
+                        description,
+                        currentUser.getUid(),
+                        currentUser.getDisplayName()
+                    );
+                    newPhoto.setStorageUrl(downloadUri.toString());
+                    
+                    // Save to local storage and update UI
+                    userPhotoList.add(newPhoto);
+                    photoAdapter.notifyItemInserted(userPhotoList.size() - 1);
+                    savePhotos();
+                    
+                    if (listener != null) {
+                        listener.onPhotoUploaded(newPhoto);
+                    }
+                    
+                    Toast.makeText(this, "Photo uploaded successfully", Toast.LENGTH_SHORT).show();
+                } else {
+                    Exception e = task.getException();
+                    Log.e(TAG, "Upload failed", e);
+                    String errorMessage = "Upload failed: ";
+                    if (e != null) {
+                        errorMessage += e.getMessage();
+                        if (e.getCause() != null) {
+                            errorMessage += " (" + e.getCause().getMessage() + ")";
+                        }
+                    }
+                    Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show();
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Error preparing upload", e);
+            Toast.makeText(this, "Error preparing upload: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    // Interface for photo upload callback
+    private interface OnPhotoUploadListener {
+        void onPhotoUploaded(UserPhoto photo);
+    }
+
+    // Update gallery photo handling
+    private void handleGalleryPhoto(Uri selectedImageUri) {
+        try {
+            // Show description input dialog
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("Add Description");
+            
+            final EditText input = new EditText(this);
+            input.setInputType(InputType.TYPE_CLASS_TEXT);
+            builder.setView(input);
+            
+            builder.setPositiveButton("Upload", (dialog, which) -> {
+                String description = input.getText().toString();
+                uploadPhotoToFirebase(selectedImageUri, description, null);
+            });
+            
+            builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+            
+            builder.show();
+        } catch (Exception e) {
+            Log.e(TAG, "Error handling gallery photo: " + e.getMessage());
+            Toast.makeText(this, "Failed to process image", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // Update camera photo handling
+    private void handleCameraPhoto() {
+        if (currentPhotoUri != null) {
+            try {
+                // Show description input dialog
+                AlertDialog.Builder builder = new AlertDialog.Builder(this);
+                builder.setTitle("Add Description");
+                
+                final EditText input = new EditText(this);
+                input.setInputType(InputType.TYPE_CLASS_TEXT);
+                builder.setView(input);
+                
+                builder.setPositiveButton("Upload", (dialog, which) -> {
+                    String description = input.getText().toString();
+                    uploadPhotoToFirebase(currentPhotoUri, description, null);
+                });
+                
+                builder.setNegativeButton("Cancel", (dialog, which) -> dialog.cancel());
+                
+                builder.show();
+            } catch (Exception e) {
+                Log.e(TAG, "Error handling camera photo: " + e.getMessage());
+                Toast.makeText(this, "Failed to process camera image", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void deletePhotoFromList(UserPhoto photo, int position) {
+        // Remove the photo from the list
+        userPhotoList.remove(position);
+        photoAdapter.notifyItemRemoved(position);
+        
+        // Save the updated list
+        savePhotos();
+        
+        Toast.makeText(this, "Photo deleted", Toast.LENGTH_SHORT).show();
+    }
+
+    // Update gallery launcher to use new photo handling
+    private void setupGalleryLauncher() {
+        galleryLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    Uri selectedImageUri = result.getData().getData();
+                    if (selectedImageUri != null) {
+                        handleGalleryPhoto(selectedImageUri);
+                    }
+                }
+            });
+    }
+
+    // Update camera launcher to use new photo handling
+    private void setupCameraLauncher() {
+        cameraLauncher = registerForActivityResult(
+            new ActivityResultContracts.TakePicture(),
+            success -> {
+                if (success && currentPhotoUri != null) {
+                    handleCameraPhoto();
+                }
+            });
     }
 }
