@@ -1,5 +1,6 @@
 package com.natanp_josefm_michaelk.picturegram;
 
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -7,6 +8,7 @@ import android.widget.TextView;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
 import androidx.constraintlayout.widget.Group;
 import androidx.core.view.ViewCompat;
 import androidx.core.graphics.Insets;
@@ -28,12 +30,22 @@ public class UsersActivity extends AppCompatActivity {
     private UserAdapter     adapter;
     private List<User>      userList;
     private FirebaseFirestore db;
+    private SharedPreferences sharedPreferences;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         // Keep your EdgeToEdge logic if you like
         EdgeToEdge.enable(this);
+
+        // Initialize SharedPreferences
+        sharedPreferences = getSharedPreferences("AppSettings", MODE_PRIVATE);
+        
+        // Apply theme based on saved preference
+        boolean isDarkMode = sharedPreferences.getBoolean("darkMode", false);
+        AppCompatDelegate.setDefaultNightMode(
+            isDarkMode ? AppCompatDelegate.MODE_NIGHT_YES : AppCompatDelegate.MODE_NIGHT_NO
+        );
 
         setContentView(R.layout.activity_users);
 
