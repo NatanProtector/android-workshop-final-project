@@ -2,6 +2,7 @@ package com.natanp_josefm_michaelk.picturegram;
 
 import com.google.firebase. auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -18,6 +19,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -79,6 +81,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
 
     private FirebaseStorage storage;
     private FirebaseAuth auth;
+    private FirebaseFirestore firestore;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,6 +91,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         // Initialize Firebase instances
         storage = FirebaseStorage.getInstance();
         auth = FirebaseAuth.getInstance();
+        firestore = FirebaseFirestore.getInstance();
 
         TextView notAuthenticatedTextView = findViewById(R.id.notAuthenticatedTextView);
         androidx.constraintlayout.widget.Group profileContentGroup = findViewById(R.id.profileContentGroup);
@@ -141,8 +145,29 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         // Set listener for Add Friend button
         addFriendButton.setText("Follow");
         addFriendButton.setOnClickListener(v -> {
-            // TODO: Implement actual friend request logic
-            Toast.makeText(ProfileActivity.this, "Friend request sent to " + userName, Toast.LENGTH_SHORT).show();
+            // Show a toast with the follow action
+            Toast.makeText(ProfileActivity.this, "You are now following " + userName, Toast.LENGTH_SHORT).show();
+            
+            // Create a notification for the follow action
+            FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
+            if (currentUser != null && currentUser.getDisplayName() != null) {
+                // Create and save notification to Firestore
+                Notification notification = new Notification("follow", currentUser.getDisplayName(), userName);
+                
+                // Log notification data before saving
+                Log.d(TAG, "Creating follow notification: from=" + notification.getFromUser() + 
+                      ", to=" + notification.getToUser() + 
+                      ", timestamp=" + notification.getTimestamp());
+                
+                firestore.collection("notifications")
+                    .add(notification)
+                    .addOnSuccessListener(documentReference -> {
+                        Log.d(TAG, "Follow notification created with ID: " + documentReference.getId());
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Error creating follow notification", e);
+                    });
+            }
         });
         
         // Initialize photo list
@@ -172,6 +197,28 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 showPhotoSourceDialog();
             }
         });
+
+        // Initialize notification views and listener
+        FrameLayout notificationContainer = findViewById(R.id.notificationContainer);
+        ImageView notificationBell = findViewById(R.id.notificationBell);
+        TextView notificationCount = findViewById(R.id.notificationCount);
+        
+        // Only show notifications for the current user, not when viewing others' profiles
+        if (userName != null && userName.equals(currentUserName)) {
+            notificationContainer.setVisibility(View.VISIBLE);
+            
+            // Set up real-time listener for unread notifications count
+            setupNotificationCounter(notificationCount);
+            
+            // Set up click listener for notification bell
+            notificationBell.setOnClickListener(v -> {
+                // Open NotificationsActivity when bell is clicked
+                Intent intent = new Intent(ProfileActivity.this, NotificationsActivity.class);
+                startActivity(intent);
+            });
+        } else {
+            notificationContainer.setVisibility(View.GONE);
+        }
     }
     
     private String getStoragePermission() {
@@ -376,6 +423,29 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             // Show appropriate message
             String message = photo.isLikedByUser(userName) ? "Photo liked" : "Like removed";
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+            
+            // If this is a new like (not a removal), create a notification
+            if (photo.isLikedByUser(userName)) {
+                FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
+                if (currentUser != null && currentUser.getDisplayName() != null && !userName.equals(currentUser.getDisplayName())) {
+                    // Create and save notification to Firestore
+                    Notification notification = new Notification("like", currentUser.getDisplayName(), userName);
+                    
+                    // Log notification data before saving
+                    Log.d(TAG, "Creating like notification: from=" + notification.getFromUser() + 
+                          ", to=" + notification.getToUser() + 
+                          ", timestamp=" + notification.getTimestamp());
+                    
+                    firestore.collection("notifications")
+                        .add(notification)
+                        .addOnSuccessListener(documentReference -> {
+                            Log.d(TAG, "Notification created with ID: " + documentReference.getId());
+                        })
+                        .addOnFailureListener(e -> {
+                            Log.e(TAG, "Error creating notification", e);
+                        });
+                }
+            }
         }
     }
     
@@ -667,5 +737,29 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                     handleCameraPhoto();
                 }
             });
+    }
+
+    private void setupNotificationCounter(TextView countView) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user != null && user.getDisplayName() != null) {
+            // Query for unread notifications
+            firestore.collection("notifications")
+                .whereEqualTo("toUser", user.getDisplayName())
+                .whereEqualTo("isRead", false)
+                .addSnapshotListener((snapshot, e) -> {
+                    if (e != null) {
+                        Log.w(TAG, "Listen failed for notifications.", e);
+                        return;
+                    }
+                    
+                    if (snapshot != null && !snapshot.isEmpty()) {
+                        int count = snapshot.size();
+                        countView.setVisibility(View.VISIBLE);
+                        countView.setText(String.valueOf(count));
+                    } else {
+                        countView.setVisibility(View.GONE);
+                    }
+                });
+        }
     }
 }
