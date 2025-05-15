@@ -15,6 +15,7 @@ public class UserPhoto implements Serializable {
     private String storageUrl; // Firebase Storage URL
     private String authorId;   // Firebase user ID of the author
     private String authorName; // Display name of the author
+    private String firestoreId; // Firestore document ID for this photo
 
     public UserPhoto(int imageResourceId) {
         this.imageResourceId = imageResourceId;
@@ -143,5 +144,17 @@ public class UserPhoto implements Serializable {
 
     public boolean isAuthor(String userId) {
         return authorId != null && authorId.equals(userId);
+    }
+
+    public String getFirestoreId() {
+        return firestoreId;
+    }
+
+    public void setFirestoreId(String firestoreId) {
+        this.firestoreId = firestoreId;
+    }
+
+    public boolean hasFirestoreId() {
+        return firestoreId != null && !firestoreId.isEmpty();
     }
 } 

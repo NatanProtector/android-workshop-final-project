@@ -2,6 +2,7 @@ package com.natanp_josefm_michaelk.picturegram;
 
 import com.google.firebase. auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import android.app.AlertDialog;
 import android.content.Context;
@@ -412,8 +413,90 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
 
     @Override
     public void onLikeClick(UserPhoto photo, int position) {
-        // Toggle like with the current user's name
-        boolean likeToggled = photo.toggleLike(userName);
+        FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
+        if (currentUser == null || currentUser.getDisplayName() == null) {
+            Toast.makeText(this, "You must be logged in to like photos", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        String currentUsername = currentUser.getDisplayName();
+        boolean isCurrentlyLiked = photo.isLikedByUser(currentUsername);
+        
+        // Check if this photo has a Firestore ID
+        if (photo.hasFirestoreId()) {
+            // This photo is in Firestore, update likes there
+            updateLikeInFirestore(photo, currentUsername, !isCurrentlyLiked);
+        } else {
+            // This is a legacy photo, just use local storage
+            handleLegacyLike(photo, position, currentUsername);
+        }
+    }
+    
+    private void updateLikeInFirestore(UserPhoto photo, String username, boolean isLiking) {
+        // Get the Firestore document reference for this photo
+        String photoId = photo.getFirestoreId();
+        
+        // Create a reference to the photos document
+        // Update the Firestore document
+        if (isLiking) {
+            // Add the user's name to likedBy array and increment likeCount
+            firestore.collection("photos").document(photoId)
+                .update(
+                    "likedBy", FieldValue.arrayUnion(username),
+                    "likeCount", FieldValue.increment(1)
+                )
+                .addOnSuccessListener(aVoid -> {
+                    Log.d(TAG, "Like added to Firestore for photo: " + photoId);
+                    
+                    // Update local object
+                    if (!photo.isLikedByUser(username)) {
+                        photo.getLikedByUsers().add(username);
+                        photo.setLikeCount(photo.getLikeCount() + 1);
+                        photoAdapter.notifyItemChanged(userPhotoList.indexOf(photo));
+                    }
+                    
+                    // Show success message
+                    Toast.makeText(this, "Photo liked", Toast.LENGTH_SHORT).show();
+                    
+                    // Create notification (if this is not the user's own photo)
+                    if (!username.equals(photo.getAuthorName())) {
+                        createLikeNotification(username, photo.getAuthorName());
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Error updating like in Firestore", e);
+                    Toast.makeText(this, "Failed to update like", Toast.LENGTH_SHORT).show();
+                });
+        } else {
+            // Remove the user's name from likedBy array and decrement likeCount
+            firestore.collection("photos").document(photoId)
+                .update(
+                    "likedBy", FieldValue.arrayRemove(username),
+                    "likeCount", FieldValue.increment(-1)
+                )
+                .addOnSuccessListener(aVoid -> {
+                    Log.d(TAG, "Like removed from Firestore for photo: " + photoId);
+                    
+                    // Update local object
+                    if (photo.isLikedByUser(username)) {
+                        photo.getLikedByUsers().remove(username);
+                        photo.setLikeCount(Math.max(0, photo.getLikeCount() - 1)); // Ensure we don't go below 0
+                        photoAdapter.notifyItemChanged(userPhotoList.indexOf(photo));
+                    }
+                    
+                    // Show success message
+                    Toast.makeText(this, "Like removed", Toast.LENGTH_SHORT).show();
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Error removing like in Firestore", e);
+                    Toast.makeText(this, "Failed to remove like", Toast.LENGTH_SHORT).show();
+                });
+        }
+    }
+    
+    private void handleLegacyLike(UserPhoto photo, int position, String username) {
+        // Toggle like with the user's name (legacy approach)
+        boolean likeToggled = photo.toggleLike(username);
         
         if (likeToggled) {
             // The like state changed (either added or removed)
@@ -421,32 +504,35 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             savePhotos();
             
             // Show appropriate message
-            String message = photo.isLikedByUser(userName) ? "Photo liked" : "Like removed";
+            String message = photo.isLikedByUser(username) ? "Photo liked" : "Like removed";
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
             
             // If this is a new like (not a removal), create a notification
-            if (photo.isLikedByUser(userName)) {
-                FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
-                if (currentUser != null && currentUser.getDisplayName() != null && !userName.equals(currentUser.getDisplayName())) {
-                    // Create and save notification to Firestore
-                    Notification notification = new Notification("like", currentUser.getDisplayName(), userName);
-                    
-                    // Log notification data before saving
-                    Log.d(TAG, "Creating like notification: from=" + notification.getFromUser() + 
-                          ", to=" + notification.getToUser() + 
-                          ", timestamp=" + notification.getTimestamp());
-                    
-                    firestore.collection("notifications")
-                        .add(notification)
-                        .addOnSuccessListener(documentReference -> {
-                            Log.d(TAG, "Notification created with ID: " + documentReference.getId());
-                        })
-                        .addOnFailureListener(e -> {
-                            Log.e(TAG, "Error creating notification", e);
-                        });
+            if (photo.isLikedByUser(username)) {
+                if (!username.equals(photo.getAuthorName())) {
+                    createLikeNotification(username, photo.getAuthorName());
                 }
             }
         }
+    }
+    
+    private void createLikeNotification(String fromUsername, String toUsername) {
+        // Create and save notification to Firestore
+        Notification notification = new Notification("like", fromUsername, toUsername);
+        
+        // Log notification data before saving
+        Log.d(TAG, "Creating like notification: from=" + notification.getFromUser() + 
+              ", to=" + notification.getToUser() + 
+              ", timestamp=" + notification.getTimestamp());
+        
+        firestore.collection("notifications")
+            .add(notification)
+            .addOnSuccessListener(documentReference -> {
+                Log.d(TAG, "Notification created with ID: " + documentReference.getId());
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error creating notification", e);
+            });
     }
     
     @Override
@@ -462,23 +548,59 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             .setTitle("Delete Photo")
             .setMessage("Are you sure you want to delete this photo?")
             .setPositiveButton("Delete", (dialog, which) -> {
-                // Delete from Firebase Storage if URL exists
-                if (photo.getStorageUrl() != null) {
-                    StorageReference photoRef = storage.getReferenceFromUrl(photo.getStorageUrl());
-                    photoRef.delete().addOnCompleteListener(task -> {
-                        if (task.isSuccessful()) {
-                            deletePhotoFromList(photo, position);
-                        } else {
-                            Toast.makeText(this, "Failed to delete photo from storage", 
-                                Toast.LENGTH_SHORT).show();
-                        }
-                    });
+                // First check if this is a Firestore photo
+                if (photo.hasFirestoreId()) {
+                    // Delete from Firestore first
+                    deletePhotoFromFirestore(photo, position);
                 } else {
-                    deletePhotoFromList(photo, position);
+                    // Old approach for legacy photos
+                    deletePhotoLegacy(photo, position);
                 }
             })
             .setNegativeButton("Cancel", null)
             .show();
+    }
+    
+    private void deletePhotoFromFirestore(UserPhoto photo, int position) {
+        // Delete the Firestore document
+        firestore.collection("photos").document(photo.getFirestoreId())
+            .delete()
+            .addOnSuccessListener(aVoid -> {
+                Log.d(TAG, "Photo document deleted from Firestore: " + photo.getFirestoreId());
+                
+                // Now delete from Storage if URL exists
+                if (photo.getStorageUrl() != null) {
+                    deletePhotoFromStorage(photo, position);
+                } else {
+                    // No storage URL, just remove from local list
+                    deletePhotoFromList(photo, position);
+                }
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error deleting photo document from Firestore", e);
+                Toast.makeText(this, "Failed to delete photo from database", Toast.LENGTH_SHORT).show();
+            });
+    }
+    
+    private void deletePhotoLegacy(UserPhoto photo, int position) {
+        // Delete from Firebase Storage if URL exists
+        if (photo.getStorageUrl() != null) {
+            deletePhotoFromStorage(photo, position);
+        } else {
+            deletePhotoFromList(photo, position);
+        }
+    }
+    
+    private void deletePhotoFromStorage(UserPhoto photo, int position) {
+        StorageReference photoRef = storage.getReferenceFromUrl(photo.getStorageUrl());
+        photoRef.delete().addOnCompleteListener(task -> {
+            if (task.isSuccessful()) {
+                deletePhotoFromList(photo, position);
+            } else {
+                Toast.makeText(this, "Failed to delete photo from storage", 
+                    Toast.LENGTH_SHORT).show();
+            }
+        });
     }
     
     @Override
@@ -581,8 +703,11 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         Toast.makeText(this, "Uploading photo...", Toast.LENGTH_SHORT).show();
 
         try {
+            // Generate a unique photo ID
+            String photoId = UUID.randomUUID().toString();
+            
             // Create a unique filename with user ID to avoid conflicts
-            String filename = currentUser.getUid() + "/" + UUID.randomUUID().toString() + ".jpg";
+            String filename = currentUser.getUid() + "/" + photoId + ".jpg";
             StorageReference photoRef = storage.getReference().child("photos/" + filename);
 
             Log.d(TAG, "Starting upload to: " + photoRef.getPath());
@@ -617,6 +742,9 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                     );
                     newPhoto.setStorageUrl(downloadUri.toString());
                     
+                    // Create a Firestore document for the photo
+                    savePhotoToFirestore(photoId, newPhoto, downloadUri.toString());
+                    
                     // Save to local storage and update UI
                     userPhotoList.add(newPhoto);
                     photoAdapter.notifyItemInserted(userPhotoList.size() - 1);
@@ -644,6 +772,34 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             Log.e(TAG, "Error preparing upload", e);
             Toast.makeText(this, "Error preparing upload: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
+    }
+    
+    private void savePhotoToFirestore(String photoId, UserPhoto photo, String storageUrl) {
+        FirebaseUser currentUser = auth.getCurrentUser();
+        if (currentUser == null) return;
+        
+        // Create a new photo document in Firestore
+        java.util.Map<String, Object> photoData = new java.util.HashMap<>();
+        photoData.put("description", photo.getDescription());
+        photoData.put("storageUrl", storageUrl);
+        photoData.put("uploadedBy", currentUser.getDisplayName());
+        photoData.put("authorId", currentUser.getUid());
+        photoData.put("timestamp", System.currentTimeMillis());
+        photoData.put("likeCount", 0);
+        photoData.put("likedBy", new ArrayList<String>());
+        
+        // Save to Firestore
+        firestore.collection("photos")
+            .document(photoId)
+            .set(photoData)
+            .addOnSuccessListener(aVoid -> {
+                Log.d(TAG, "Photo document added to Firestore with ID: " + photoId);
+                // Set the Firestore document ID in the UserPhoto object
+                photo.setFirestoreId(photoId);
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error adding photo document to Firestore", e);
+            });
     }
 
     // Interface for photo upload callback
