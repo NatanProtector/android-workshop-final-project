@@ -83,6 +83,12 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     private FirebaseStorage storage;
     private FirebaseAuth auth;
     private FirebaseFirestore firestore;
+    
+    // Notification UI elements
+    private FrameLayout notificationContainer;
+    private TextView notificationCount;
+    private View notificationDot;
+    private ImageView notificationBell;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -200,16 +206,25 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         });
 
         // Initialize notification views and listener
-        FrameLayout notificationContainer = findViewById(R.id.notificationContainer);
-        ImageView notificationBell = findViewById(R.id.notificationBell);
-        TextView notificationCount = findViewById(R.id.notificationCount);
+        notificationContainer = findViewById(R.id.notificationContainer);
+        notificationCount = findViewById(R.id.notificationCount);
+        notificationDot = findViewById(R.id.notificationDot);
+        notificationBell = findViewById(R.id.notificationBell);
+        
+        // Initialize notification indicators as hidden
+        notificationDot.setVisibility(View.GONE);
+        notificationCount.setVisibility(View.GONE);
         
         // Only show notifications for the current user, not when viewing others' profiles
         if (userName != null && userName.equals(currentUserName)) {
             notificationContainer.setVisibility(View.VISIBLE);
             
+            // Create a test notification for debugging (remove in production)
+            // Uncomment for testing
+            // createTestNotification(currentUserName);
+            
             // Set up real-time listener for unread notifications count
-            setupNotificationCounter(notificationCount);
+            setupNotificationCounter(notificationCount, notificationDot);
             
             // Set up click listener for notification bell
             notificationBell.setOnClickListener(v -> {
@@ -219,6 +234,23 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             });
         } else {
             notificationContainer.setVisibility(View.GONE);
+        }
+    }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        
+        // Refresh notification status when returning to this activity
+        // (for example, after viewing notifications in NotificationsActivity)
+        if (userName != null && auth.getCurrentUser() != null && 
+            userName.equals(auth.getCurrentUser().getDisplayName())) {
+            
+            // The real-time listener should automatically update, 
+            // but we can force a refresh of the UI here if needed
+            notificationContainer.invalidate();
+            
+            Log.d(TAG, "Activity resumed - notification status should update automatically");
         }
     }
     
@@ -895,27 +927,94 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             });
     }
 
-    private void setupNotificationCounter(TextView countView) {
+    private void setupNotificationCounter(TextView countView, View dotView) {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
         if (user != null && user.getDisplayName() != null) {
-            // Query for unread notifications
+            // Query for any unread notifications (isRead = false)
             firestore.collection("notifications")
                 .whereEqualTo("toUser", user.getDisplayName())
                 .whereEqualTo("isRead", false)
                 .addSnapshotListener((snapshot, e) -> {
                     if (e != null) {
-                        Log.w(TAG, "Listen failed for notifications.", e);
+                        Log.e(TAG, "Error checking for unread notifications: " + e.getMessage());
                         return;
                     }
                     
-                    if (snapshot != null && !snapshot.isEmpty()) {
-                        int count = snapshot.size();
+                    // Count unread notifications
+                    int unreadCount = (snapshot != null) ? snapshot.size() : 0;
+                    Log.d(TAG, "Unread notifications: " + unreadCount);
+                    
+                    // Extremely simple logic: show dot if any unread notifications exist
+                    if (unreadCount > 0) {
+                        // SHOW RED DOT - there are unread notifications
+                        Log.d(TAG, "SHOWING RED DOT - unread count: " + unreadCount);
+                        dotView.setVisibility(View.VISIBLE);
+                    } else {
+                        // HIDE RED DOT - no unread notifications
+                        Log.d(TAG, "HIDING RED DOT - no unread notifications");
+                        dotView.setVisibility(View.GONE);
+                    }
+                    
+                    // Optionally show count (you can comment this out if you just want the dot)
+                    if (unreadCount > 0) {
                         countView.setVisibility(View.VISIBLE);
-                        countView.setText(String.valueOf(count));
+                        countView.setText(String.valueOf(unreadCount));
                     } else {
                         countView.setVisibility(View.GONE);
                     }
                 });
         }
+    }
+
+    // For debugging only - creates a test notification for the current user
+    private void createTestNotification(String username) {
+        // Check if we need to create a test notification (only for testing/debugging)
+        firestore.collection("notifications")
+            .whereEqualTo("toUser", username)
+            .whereEqualTo("isRead", false)  // Only check for unread notifications
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                if (queryDocumentSnapshots.isEmpty()) {
+                    // No unread notifications exist, create a test one
+                    Log.d(TAG, "Creating test notification for: " + username);
+                    Notification testNotification = new Notification("follow", "TestUser", username);
+                    // Make sure it's not read
+                    testNotification.setRead(false);
+                    firestore.collection("notifications")
+                        .add(testNotification)
+                        .addOnSuccessListener(documentReference -> 
+                            Log.d(TAG, "Test notification created: " + documentReference.getId()))
+                        .addOnFailureListener(e -> 
+                            Log.e(TAG, "Error creating test notification", e));
+                } else {
+                    Log.d(TAG, "Unread notifications already exist, not creating test notification");
+                }
+            })
+            .addOnFailureListener(e -> 
+                Log.e(TAG, "Error checking for existing notifications", e));
+    }
+
+    // Uncomment this method to add a test unread notification (for testing purposes)
+    private void addTestUnreadNotification() {
+        FirebaseUser user = auth.getCurrentUser();
+        if (user == null || user.getDisplayName() == null) {
+            return;
+        }
+        
+        String username = user.getDisplayName();
+        
+        // Create an unread notification
+        Notification testNotification = new Notification("follow", "TestUser", username);
+        testNotification.setRead(false);
+        
+        firestore.collection("notifications")
+            .add(testNotification)
+            .addOnSuccessListener(documentReference -> {
+                Log.d(TAG, "Test unread notification created with ID: " + documentReference.getId());
+                Toast.makeText(this, "Test unread notification created", Toast.LENGTH_SHORT).show();
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error creating test notification", e);
+            });
     }
 }

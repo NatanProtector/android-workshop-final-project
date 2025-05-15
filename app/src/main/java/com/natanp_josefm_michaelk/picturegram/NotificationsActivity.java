@@ -58,6 +58,9 @@ public class NotificationsActivity extends AppCompatActivity {
         
         // Load notifications
         loadNotifications();
+        
+        // Mark all notifications as read immediately when this activity is opened
+        markAllNotificationsAsRead();
     }
     
     private void loadNotifications() {
@@ -174,6 +177,50 @@ public class NotificationsActivity extends AppCompatActivity {
             Log.e(TAG, "Unexpected error in loadNotifications: " + e.getMessage(), e);
             Toast.makeText(this, "Unexpected error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
+    }
+    
+    private void markAllNotificationsAsRead() {
+        FirebaseUser user = auth.getCurrentUser();
+        if (user == null || user.getDisplayName() == null) {
+            Log.e(TAG, "Cannot mark notifications as read: User not signed in");
+            return;
+        }
+        
+        // Get all unread notifications for this user
+        firestore.collection("notifications")
+            .whereEqualTo("toUser", user.getDisplayName())
+            .whereEqualTo("isRead", false)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                if (queryDocumentSnapshots.isEmpty()) {
+                    Log.d(TAG, "No unread notifications to mark as read");
+                    return;
+                }
+                
+                // Create a batch to update all notifications at once
+                WriteBatch batch = firestore.batch();
+                int count = 0;
+                
+                for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                    batch.update(doc.getReference(), "isRead", true);
+                    count++;
+                }
+                
+                // Create a final copy of count for use in the lambda
+                final int finalCount = count;
+                
+                // Commit the batch update
+                batch.commit()
+                    .addOnSuccessListener(aVoid -> {
+                        Log.d(TAG, "Successfully marked " + finalCount + " notifications as read");
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Error marking notifications as read: " + e.getMessage());
+                    });
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error querying notifications: " + e.getMessage());
+            });
     }
     
     /**
