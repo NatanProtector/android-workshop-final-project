@@ -28,6 +28,9 @@
         </provider>
         
         <activity
+            android:name=".NotificationsActivity"
+            android:exported="false" />
+        <activity
             android:name=".PhotoSelectionActivity"
             android:exported="false" />
         <activity

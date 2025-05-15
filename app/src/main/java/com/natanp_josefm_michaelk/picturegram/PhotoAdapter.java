@@ -17,18 +17,24 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
 import java.util.List;
+import java.util.ArrayList;
 
 import com.bumptech.glide.Glide;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHolder> {
+    
+    private static final String TAG = "PhotoAdapter";
     
     private List<UserPhoto> photoList;
     private OnPhotoClickListener listener;
     private ItemTouchHelper touchHelper;
     private String currentUsername; // Username of the current user
     private FirebaseAuth auth;
+    private FirebaseFirestore firestore;
     
     public interface OnPhotoClickListener {
         void onPhotoClick(UserPhoto photo, int position);
@@ -42,6 +48,7 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
         this.listener = listener;
         this.currentUsername = username;
         this.auth = FirebaseAuth.getInstance();
+        this.firestore = FirebaseFirestore.getInstance();
     }
     
     public void setTouchHelper(ItemTouchHelper touchHelper) {
@@ -59,79 +66,59 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
     @Override
     public void onBindViewHolder(@NonNull PhotoViewHolder holder, int position) {
         UserPhoto photo = photoList.get(position);
-        FirebaseUser currentUser = auth.getCurrentUser();
-        boolean isAuthor = currentUser != null && photo.isAuthor(currentUser.getUid());
         
-        // Show/hide edit and delete buttons based on author status
-        holder.deletePhotoButton.setVisibility(isAuthor ? View.VISIBLE : View.GONE);
-        holder.editDescriptionButton.setVisibility(isAuthor ? View.VISIBLE : View.GONE);
-        
-        // Reset ImageView
-        holder.photoImageView.setImageResource(0);
-        
-        // Load image from Firebase Storage URL if available
-        if (photo.getStorageUrl() != null && !photo.getStorageUrl().isEmpty()) {
-            Glide.with(holder.itemView.getContext())
-                .load(photo.getStorageUrl())
-                .centerCrop()
-                .placeholder(R.drawable.my_img1)
-                .error(R.drawable.my_img1)
-                .into(holder.photoImageView);
-        }
-        // Fallback to file path if no storage URL
-        else if (photo.hasFilePath()) {
-            String pathOrUri = photo.getFilePath();
+        // Load image
+        if (photo.hasFilePath()) {
             try {
-                Uri imageUri;
-                if (pathOrUri.startsWith("content://") || pathOrUri.startsWith("file://")) {
-                    imageUri = Uri.parse(pathOrUri);
+                // For new photos with file path (from gallery or camera)
+                if (photo.getStorageUrl() != null && !photo.getStorageUrl().isEmpty()) {
+                    // Use Firebase storage URL
+                    Glide.with(holder.photoImageView.getContext())
+                        .load(photo.getStorageUrl())
+                        .centerCrop()
+                        .into(holder.photoImageView);
                 } else {
-                    File imageFile = new File(pathOrUri);
-                    if (!imageFile.exists()) {
-                        holder.photoImageView.setImageResource(R.drawable.my_img1);
-                        Log.w("PhotoAdapter", "File not found: " + pathOrUri);
-                        return;
-                    }
-                    imageUri = Uri.fromFile(imageFile);
+                    // Use local file path
+                    Uri imageUri = Uri.parse(photo.getFilePath());
+                    Glide.with(holder.photoImageView.getContext())
+                        .load(imageUri)
+                        .centerCrop()
+                        .into(holder.photoImageView);
                 }
-                Glide.with(holder.itemView.getContext())
-                    .load(imageUri)
-                    .centerCrop()
-                    .placeholder(R.drawable.my_img1)
-                    .error(R.drawable.my_img1)
-                    .into(holder.photoImageView);
             } catch (Exception e) {
-                Log.e("PhotoAdapter", "Error loading image: " + e.getMessage());
-                holder.photoImageView.setImageResource(R.drawable.my_img1);
+                Log.e(TAG, "Error loading image", e);
+                // Fallback to placeholder
+                holder.photoImageView.setImageResource(R.mipmap.ic_launcher);
             }
-        }
-        // Fallback to resource ID
-        else if (photo.getImageResourceId() != 0) {
+        } else {
+            // For resources (e.g. built-in drawables)
             holder.photoImageView.setImageResource(photo.getImageResourceId());
         }
-        // Final fallback
-        else {
-            holder.photoImageView.setImageResource(R.drawable.my_img1);
+        
+        // Set other data
+        holder.photoDescriptionTextView.setText(photo.getDescription());
+        
+        // Set up like count and icon
+        updateLikeUI(holder, photo);
+        
+        // If this photo has a Firestore ID, check for current likes in Firestore
+        if (photo.hasFirestoreId()) {
+            loadLikesFromFirestore(holder, photo);
         }
         
-        // Set description
-        if (photo.getDescription() != null && !photo.getDescription().isEmpty()) {
-            holder.photoDescriptionTextView.setVisibility(View.VISIBLE);
-            holder.photoDescriptionTextView.setText(photo.getDescription());
+        // Check if current user is the author - make it final for lambda capture
+        final boolean isAuthor;
+        FirebaseUser currentUser = auth.getCurrentUser();
+        if (currentUser != null) {
+            isAuthor = photo.isAuthor(currentUser.getUid());
         } else {
-            holder.photoDescriptionTextView.setText("No description");
-            holder.photoDescriptionTextView.setVisibility(View.VISIBLE);
+            isAuthor = false;
         }
         
-        // Set like count and state
-        holder.likeCountTextView.setText(String.valueOf(photo.getLikeCount()));
-        if (photo.isLikedByUser(currentUsername)) {
-            holder.likeImageView.setImageResource(android.R.drawable.btn_star_big_on);
-            holder.likeImageView.setColorFilter(Color.RED);
-        } else {
-            holder.likeImageView.setImageResource(android.R.drawable.btn_star_big_off);
-            holder.likeImageView.clearColorFilter();
-        }
+        // Set delete and edit buttons visibility based on authorship
+        holder.deletePhotoButton.setVisibility(isAuthor ? View.VISIBLE : View.GONE);
+        holder.editDescriptionButton.setVisibility(isAuthor ? View.VISIBLE : View.GONE);
+        holder.dragHandleButton.setVisibility(isAuthor ? View.VISIBLE : View.GONE);
         
         // Set click listeners
         holder.photoImageView.setOnClickListener(v -> {
@@ -159,7 +146,6 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
         });
         
         // Set drag handle touch listener (only for author)
-        holder.dragHandleButton.setVisibility(isAuthor ? View.VISIBLE : View.GONE);
         holder.dragHandleButton.setOnTouchListener((v, event) -> {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN && isAuthor) {
                 if (touchHelper != null) {
@@ -168,6 +154,45 @@ public class PhotoAdapter extends RecyclerView.Adapter<PhotoAdapter.PhotoViewHol
             }
             return false;
         });
+    }
+    
+    private void updateLikeUI(PhotoViewHolder holder, UserPhoto photo) {
+        holder.likeCountTextView.setText(String.valueOf(photo.getLikeCount()));
+        if (photo.isLikedByUser(currentUsername)) {
+            holder.likeImageView.setImageResource(android.R.drawable.btn_star_big_on);
+            holder.likeImageView.setColorFilter(Color.RED);
+        } else {
+            holder.likeImageView.setImageResource(android.R.drawable.btn_star_big_off);
+            holder.likeImageView.clearColorFilter();
+        }
+    }
+    
+    private void loadLikesFromFirestore(PhotoViewHolder holder, UserPhoto photo) {
+        // Load fresh like data from Firestore
+        firestore.collection("photos").document(photo.getFirestoreId())
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (documentSnapshot.exists()) {
+                    // Update like count
+                    Long likeCount = documentSnapshot.getLong("likeCount");
+                    if (likeCount != null) {
+                        photo.setLikeCount(likeCount.intValue());
+                    }
+                    
+                    // Update likedBy list
+                    List<String> likedBy = (List<String>) documentSnapshot.get("likedBy");
+                    if (likedBy != null) {
+                        photo.getLikedByUsers().clear();
+                        photo.getLikedByUsers().addAll(likedBy);
+                    }
+                    
+                    // Update UI
+                    updateLikeUI(holder, photo);
+                }
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error loading likes from Firestore for photo: " + photo.getFirestoreId(), e);
+            });
     }
 
     @Override
