@@ -18,7 +18,7 @@ import com.google.firebase.auth.FirebaseUser;
  *  - must add splash activity with our names and logo (optional)
  * */
 
-public class MainActivity extends AppCompatActivity {
+public class LoginActivity extends AppCompatActivity {
 
     EditText editTextEmail;
     EditText editTextPassword;
@@ -63,7 +63,7 @@ public class MainActivity extends AppCompatActivity {
 
             // Check if fields are empty
             if (email.isEmpty() || password.isEmpty()) {
-                Toast.makeText(MainActivity.this, "Please enter both email and password", Toast.LENGTH_SHORT).show();
+                Toast.makeText(LoginActivity.this, "Please enter both email and password", Toast.LENGTH_SHORT).show();
                 return;
             }
             
@@ -78,7 +78,7 @@ public class MainActivity extends AppCompatActivity {
                         } else {
                             // If sign in fails, display a message to the user.
                             Log.w(TAG, "signInWithEmail:failure", task.getException());
-                            Toast.makeText(MainActivity.this, "Authentication failed.",
+                            Toast.makeText(LoginActivity.this, "Authentication failed.",
                                     Toast.LENGTH_SHORT).show();
                         }
                     });
@@ -86,7 +86,7 @@ public class MainActivity extends AppCompatActivity {
 
         textViewRegisterLink.setOnClickListener(v -> {
             // Intent to start RegisterActivity
-            Intent intent = new Intent(MainActivity.this, RegisterActivity.class);
+            Intent intent = new Intent(LoginActivity.this, RegisterActivity.class);
             startActivity(intent);
         });
     }
@@ -98,7 +98,7 @@ public class MainActivity extends AppCompatActivity {
                         ? user.getDisplayName() 
                         : "Default User"; // Or derive from email if display name is null
         
-        Intent intent = new Intent(MainActivity.this, ProfileActivity.class);
+        Intent intent = new Intent(LoginActivity.this, ProfileActivity.class);
         // Pass user data if needed, for example, user name for ProfileActivity display
         intent.putExtra("USER_NAME", userName); 
         // You might also want to pass a default profile image or retrieve it based on the user

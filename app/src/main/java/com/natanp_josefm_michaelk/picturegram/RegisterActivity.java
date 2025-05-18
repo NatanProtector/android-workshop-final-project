@@ -78,41 +78,68 @@ public class RegisterActivity extends AppCompatActivity {
                 return;
             }
 
-            // 1) Create the user
-            mAuth.createUserWithEmailAndPassword(email, password)
-                    .addOnCompleteListener(this, task -> {
-                        if (task.isSuccessful()) {
-                            FirebaseUser user = mAuth.getCurrentUser();
-                            // 2) Update displayName
-                            UserProfileChangeRequest profileUpdates =
-                                    new UserProfileChangeRequest.Builder()
-                                            .setDisplayName(username)
-                                            .build();
-
-                            user.updateProfile(profileUpdates)
-                                    .addOnCompleteListener(profileTask -> {
-                                        if (profileTask.isSuccessful()) {
-                                            Log.d(TAG, "Profile updated");
-                                            // 3) ⬅️ NEW: Save to Firestore
-                                            saveUserToFirestore(user, username);
-                                            navigateToLogin();
-                                        } else {
-                                            Log.w(TAG, "Profile update failed", profileTask.getException());
-                                            // still save to Firestore & continue
-                                            saveUserToFirestore(user, username);
-                                            navigateToLogin();
-                                        }
-                                    });
+            // Check if username is already taken
+            db.collection("users")
+                .whereEqualTo("username", username)
+                .get()
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful()) {
+                        if (!task.getResult().isEmpty()) {
+                            // Username is already taken
+                            Toast.makeText(RegisterActivity.this, 
+                                "Username is already taken. Please choose another one.", 
+                                Toast.LENGTH_SHORT).show();
                         } else {
-                            Log.w(TAG, "createUserWithEmail:failure", task.getException());
-                            Toast.makeText(this,
-                                    "Registration failed: " + task.getException().getMessage(),
-                                    Toast.LENGTH_LONG).show();
+                            // Username is available, proceed with registration
+                            createUserAccount(email, password, username);
                         }
-                    });
+                    } else {
+                        // Error checking username
+                        Log.w(TAG, "Error checking username availability", task.getException());
+                        Toast.makeText(RegisterActivity.this,
+                            "Error checking username availability. Please try again.",
+                            Toast.LENGTH_SHORT).show();
+                    }
+                });
         });
 
         buttonBack.setOnClickListener(v -> finish());
+    }
+
+    // New method to handle user account creation
+    private void createUserAccount(String email, String password, String username) {
+        // 1) Create the user
+        mAuth.createUserWithEmailAndPassword(email, password)
+                .addOnCompleteListener(this, task -> {
+                    if (task.isSuccessful()) {
+                        FirebaseUser user = mAuth.getCurrentUser();
+                        // 2) Update displayName
+                        UserProfileChangeRequest profileUpdates =
+                                new UserProfileChangeRequest.Builder()
+                                        .setDisplayName(username)
+                                        .build();
+
+                        user.updateProfile(profileUpdates)
+                                .addOnCompleteListener(profileTask -> {
+                                    if (profileTask.isSuccessful()) {
+                                        Log.d(TAG, "Profile updated");
+                                        // 3) Save to Firestore
+                                        saveUserToFirestore(user, username);
+                                        navigateToLogin();
+                                    } else {
+                                        Log.w(TAG, "Profile update failed", profileTask.getException());
+                                        // still save to Firestore & continue
+                                        saveUserToFirestore(user, username);
+                                        navigateToLogin();
+                                    }
+                                });
+                    } else {
+                        Log.w(TAG, "createUserWithEmail:failure", task.getException());
+                        Toast.makeText(this,
+                                "Registration failed: " + task.getException().getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
     }
 
     // ⬅️ NEW: Write user info into Firestore
@@ -122,7 +149,10 @@ public class RegisterActivity extends AppCompatActivity {
         userMap.put("username", username);
         userMap.put("email", firebaseUser.getEmail());
         userMap.put("profileImageUrl", ""); // will fill later if you add a profile photo
+        userMap.put("bio", "");
+        
 
+        // Save user to Firestore
         db.collection("users")
                 .document(uid)
                 .set(userMap)
@@ -131,7 +161,7 @@ public class RegisterActivity extends AppCompatActivity {
     }
 
     private void navigateToLogin() {
-        Intent intent = new Intent(RegisterActivity.this, MainActivity.class);
+        Intent intent = new Intent(RegisterActivity.this, LoginActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
                 | Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_CLEAR_TASK);

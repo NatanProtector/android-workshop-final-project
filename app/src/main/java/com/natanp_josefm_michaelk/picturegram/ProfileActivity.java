@@ -122,6 +122,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         photosRecyclerView = findViewById(R.id.photosRecyclerView);
         Button settingsButton = findViewById(R.id.settingsButton);
         Button addFriendButton = findViewById(R.id.addFriendButton);
+        TextView bioTextView = findViewById(R.id.bioTextView);
 
         // Get the data passed from the adapter
         userName = getIntent().getStringExtra("USER_NAME");
@@ -130,6 +131,24 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         // Set the data to the views
         profileNameTextView.setText(userName);
         profileImageView.setImageResource(profileImageId);
+        
+        // Fetch bio from users collection
+        if (userName != null) {
+            firestore.collection("users")
+                .whereEqualTo("username", userName)  // Use the profile being viewed's username
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    if (!queryDocumentSnapshots.isEmpty()) {
+                        // Get the first matching document
+                        String bio = queryDocumentSnapshots.getDocuments().get(0).getString("bio");
+                        if (bio != null) {
+                            bioTextView.setText(bio);
+                        } else {
+                            bioTextView.setText("");
+                        }
+                    }
+                });
+        }
         
         // Check if this profile belongs to the current user
         String currentUserName = (user != null && user.getDisplayName() != null) ? user.getDisplayName() : "";
