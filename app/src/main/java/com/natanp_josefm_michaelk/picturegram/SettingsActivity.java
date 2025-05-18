@@ -97,7 +97,7 @@ public class SettingsActivity extends AppCompatActivity {
         mAuth.signOut();
         Toast.makeText(this, "Logged out successfully", Toast.LENGTH_SHORT).show();
         // Navigate back to MainActivity (Login Screen)
-        Intent intent = new Intent(SettingsActivity.this, MainActivity.class);
+        Intent intent = new Intent(SettingsActivity.this, LoginActivity.class);
         // Clear the activity stack
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
