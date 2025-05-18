@@ -13,7 +13,7 @@ import androidx.core.view.WindowInsetsCompat;
 
 public class SplashActivity extends AppCompatActivity {
 
-    private static final long SPLASH_DELAY = 4000;
+    private static final long SPLASH_DELAY = 3000;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
