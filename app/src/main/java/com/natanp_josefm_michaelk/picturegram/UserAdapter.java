@@ -40,6 +40,7 @@ public class UserAdapter extends RecyclerView.Adapter<UserAdapter.UserViewHolder
             Intent intent = new Intent(holder.itemView.getContext(), ProfileActivity.class);
             
             // Pass user data to the ProfileActivity
+            intent.putExtra("USER_ID", user.getUserId());
             intent.putExtra("USER_NAME", user.getName());
             intent.putExtra("USER_IMAGE", user.getImageResourceId());
             

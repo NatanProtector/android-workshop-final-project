@@ -1,6 +1,6 @@
 package com.natanp_josefm_michaelk.picturegram;
 
-import com.google.firebase. auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
@@ -18,6 +18,7 @@ import android.provider.OpenableColumns;
 import android.text.InputType;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -59,6 +60,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
+
 public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.OnPhotoClickListener {
 
     private static final String TAG = "ProfileActivity";
@@ -74,6 +76,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     
     private List<UserPhoto> userPhotoList;
     private String userName;
+    private String targetUserId;
 
     private ActivityResultLauncher<Intent> galleryLauncher;
     private ActivityResultLauncher<Uri> cameraLauncher;
@@ -83,12 +86,14 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     private FirebaseStorage storage;
     private FirebaseAuth auth;
     private FirebaseFirestore firestore;
+    private boolean isFollowing = false;
     
     // Notification UI elements
     private FrameLayout notificationContainer;
     private TextView notificationCount;
     private View notificationDot;
     private ImageView notificationBell;
+    private Button addFriendButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -99,6 +104,9 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         storage = FirebaseStorage.getInstance();
         auth = FirebaseAuth.getInstance();
         firestore = FirebaseFirestore.getInstance();
+
+        // Create notification channel for system notifications
+        NotificationHelper.createNotificationChannel(this);
 
         TextView notAuthenticatedTextView = findViewById(R.id.notAuthenticatedTextView);
         androidx.constraintlayout.widget.Group profileContentGroup = findViewById(R.id.profileContentGroup);
@@ -121,11 +129,12 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         Button uploadPhotoButton = findViewById(R.id.uploadPhotoButton);
         photosRecyclerView = findViewById(R.id.photosRecyclerView);
         Button settingsButton = findViewById(R.id.settingsButton);
-        Button addFriendButton = findViewById(R.id.addFriendButton);
+        addFriendButton = findViewById(R.id.addFriendButton);
         TextView bioTextView = findViewById(R.id.bioTextView);
 
         // Get the data passed from the adapter
         userName = getIntent().getStringExtra("USER_NAME");
+        targetUserId = getIntent().getStringExtra("USER_ID");
         int profileImageId = getIntent().getIntExtra("USER_IMAGE", R.mipmap.ic_launcher);
 
         // Set the data to the views
@@ -166,33 +175,25 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             // Optionally hide uploading on other profiles
             uploadPhotoButton.setVisibility(View.GONE);
             uploadPhotoButton.setEnabled(false);
+            
+            // Check if current user is already following this user
+            checkFollowingStatus();
         }
 
         // Set listener for Add Friend button
         addFriendButton.setText("Follow");
         addFriendButton.setOnClickListener(v -> {
-            // Show a toast with the follow action
-            Toast.makeText(ProfileActivity.this, "You are now following " + userName, Toast.LENGTH_SHORT).show();
-            
-            // Create a notification for the follow action
             FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
             if (currentUser != null && currentUser.getDisplayName() != null) {
-                // Create and save notification to Firestore
-                Notification notification = new Notification("follow", currentUser.getDisplayName(), userName);
-                
-                // Log notification data before saving
-                Log.d(TAG, "Creating follow notification: from=" + notification.getFromUser() + 
-                      ", to=" + notification.getToUser() + 
-                      ", timestamp=" + notification.getTimestamp());
-                
-                firestore.collection("notifications")
-                    .add(notification)
-                    .addOnSuccessListener(documentReference -> {
-                        Log.d(TAG, "Follow notification created with ID: " + documentReference.getId());
-                    })
-                    .addOnFailureListener(e -> {
-                        Log.e(TAG, "Error creating follow notification", e);
-                    });
+                if (isFollowing) {
+                    // User is already following, so unfollow
+                    unfollowUser(currentUser.getUid(), targetUserId);
+                } else {
+                    // User is not following yet, so follow
+                    followUser(currentUser.getUid(), targetUserId);
+                }
+            } else {
+                Toast.makeText(ProfileActivity.this, "You need to be logged in to follow users", Toast.LENGTH_SHORT).show();
             }
         });
         
@@ -568,22 +569,41 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     }
     
     private void createLikeNotification(String fromUsername, String toUsername) {
-        // Create and save notification to Firestore
-        Notification notification = new Notification("like", fromUsername, toUsername);
-        
-        // Log notification data before saving
-        Log.d(TAG, "Creating like notification: from=" + notification.getFromUser() + 
-              ", to=" + notification.getToUser() + 
-              ", timestamp=" + notification.getTimestamp());
-        
-        firestore.collection("notifications")
-            .add(notification)
-            .addOnSuccessListener(documentReference -> {
-                Log.d(TAG, "Notification created with ID: " + documentReference.getId());
-            })
-            .addOnFailureListener(e -> {
-                Log.e(TAG, "Error creating notification", e);
-            });
+        try {
+            // Create and save notification to Firestore
+            Notification notification = new Notification("like", fromUsername, toUsername);
+            
+            // Log notification data before saving
+            Log.d(TAG, "Creating like notification: from=" + notification.getFromUser() + 
+                  ", to=" + notification.getToUser() + 
+                  ", timestamp=" + notification.getTimestamp());
+            
+            firestore.collection("notifications")
+                .add(notification)
+                .addOnSuccessListener(documentReference -> {
+                    Log.d(TAG, "Notification created with ID: " + documentReference.getId());
+                    
+                    try {
+                        // Show system notification if we're not notifying ourselves
+                        FirebaseUser currentUser = auth.getCurrentUser();
+                        if (currentUser != null && !fromUsername.equals(toUsername)) {
+                            // Only show notification if recipient is the current user
+                            if (toUsername.equals(currentUser.getDisplayName())) {
+                                NotificationHelper.showLikeNotification(ProfileActivity.this, fromUsername);
+                            }
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error showing like system notification", e);
+                        // Continue with app flow even if notification fails
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Error creating notification", e);
+                });
+        } catch (Exception e) {
+            Log.e(TAG, "Error in like notification process", e);
+            // Continue with app flow even if notification fails
+        }
     }
     
     @Override
@@ -1019,13 +1039,13 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         if (user == null || user.getDisplayName() == null) {
             return;
         }
-        
+
         String username = user.getDisplayName();
-        
+
         // Create an unread notification
         Notification testNotification = new Notification("follow", "TestUser", username);
         testNotification.setRead(false);
-        
+
         firestore.collection("notifications")
             .add(testNotification)
             .addOnSuccessListener(documentReference -> {
@@ -1036,4 +1056,153 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 Log.e(TAG, "Error creating test notification", e);
             });
     }
+
+    /**
+     * Check if the current user is already following the profile user
+     */
+    private void checkFollowingStatus() {
+        FirebaseUser currentUser = auth.getCurrentUser();
+        if (currentUser == null || targetUserId == null) return;
+        
+        // Query Firestore to check if current user is following this user
+        firestore.collection("users").document(currentUser.getUid())
+            .get()
+            .addOnSuccessListener(documentSnapshot -> {
+                if (documentSnapshot.exists()) {
+                    User user = documentSnapshot.toObject(User.class);
+                    if (user != null) {
+                        // Check if user's following list contains the target user ID
+                        isFollowing = user.isFollowing(targetUserId);
+                        updateFollowButton();
+                    }
+                }
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error checking following status", e);
+            });
+    }
+    
+    /**
+     * Update the follow button UI based on following status
+     */
+    private void updateFollowButton() {
+        if (isFollowing) {
+            addFriendButton.setText("Unfollow");
+        } else {
+            addFriendButton.setText("Follow");
+        }
+    }
+    
+    /**
+     * Follow a user
+     * @param currentUserId ID of the current user (follower)
+     * @param targetUserId ID of the user to follow
+     */
+    private void followUser(String currentUserId, String targetUserId) {
+        if (targetUserId == null) {
+            Log.e(TAG, "Target user ID is null");
+            Toast.makeText(this, "Cannot follow user: missing user ID", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        // Update the current user's following array
+        firestore.collection("users").document(currentUserId)
+            .update("following", FieldValue.arrayUnion(targetUserId))
+            .addOnSuccessListener(aVoid -> {
+                Log.d(TAG, "Successfully added to following");
+                
+                // Update the target user's followers array
+                firestore.collection("users").document(targetUserId)
+                    .update("followers", FieldValue.arrayUnion(currentUserId))
+                    .addOnSuccessListener(aVoid2 -> {
+                        Log.d(TAG, "Successfully added to followers");
+                        
+                        // Update UI
+                        isFollowing = true;
+                        updateFollowButton();
+                        
+                        // Show a toast with the follow action
+                        Toast.makeText(ProfileActivity.this, "You are now following " + userName, Toast.LENGTH_SHORT).show();
+                        
+                        // Create a notification for the follow action
+                        try {
+                            // Create and save notification to Firestore
+                            Notification notification = new Notification("follow", auth.getCurrentUser().getDisplayName(), userName);
+                            
+                            firestore.collection("notifications")
+                                .add(notification)
+                                .addOnSuccessListener(documentReference -> {
+                                    Log.d(TAG, "Follow notification created with ID: " + documentReference.getId());
+                                    
+                                    try {
+                                        // Show system notification if the recipient is the currently logged in user
+                                        FirebaseUser loggedInUser = auth.getCurrentUser();
+                                        if (loggedInUser != null && targetUserId.equals(loggedInUser.getUid())) {
+                                            NotificationHelper.showFollowNotification(ProfileActivity.this, 
+                                                    auth.getCurrentUser().getDisplayName());
+                                        }
+                                    } catch (Exception e) {
+                                        Log.e(TAG, "Error showing system notification", e);
+                                    }
+                                })
+                                .addOnFailureListener(e -> {
+                                    Log.e(TAG, "Error creating follow notification", e);
+                                });
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error in follow notification process", e);
+                        }
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Error updating followers array", e);
+                        Toast.makeText(ProfileActivity.this, "Failed to follow user", Toast.LENGTH_SHORT).show();
+                    });
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error updating following array", e);
+                Toast.makeText(ProfileActivity.this, "Failed to follow user", Toast.LENGTH_SHORT).show();
+            });
+    }
+    
+    /**
+     * Unfollow a user
+     * @param currentUserId ID of the current user
+     * @param targetUserId ID of the user to unfollow
+     */
+    private void unfollowUser(String currentUserId, String targetUserId) {
+        if (targetUserId == null) {
+            Log.e(TAG, "Target user ID is null");
+            Toast.makeText(this, "Cannot unfollow user: missing user ID", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        // Update the current user's following array
+        firestore.collection("users").document(currentUserId)
+            .update("following", FieldValue.arrayRemove(targetUserId))
+            .addOnSuccessListener(aVoid -> {
+                Log.d(TAG, "Successfully removed from following");
+                
+                // Update the target user's followers array
+                firestore.collection("users").document(targetUserId)
+                    .update("followers", FieldValue.arrayRemove(currentUserId))
+                    .addOnSuccessListener(aVoid2 -> {
+                        Log.d(TAG, "Successfully removed from followers");
+                        
+                        // Update UI
+                        isFollowing = false;
+                        updateFollowButton();
+                        
+                        // Show a toast with the unfollow action
+                        Toast.makeText(ProfileActivity.this, "You have unfollowed " + userName, Toast.LENGTH_SHORT).show();
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Error updating followers array", e);
+                        Toast.makeText(ProfileActivity.this, "Failed to unfollow user", Toast.LENGTH_SHORT).show();
+                    });
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error updating following array", e);
+                Toast.makeText(ProfileActivity.this, "Failed to unfollow user", Toast.LENGTH_SHORT).show();
+            });
+    }
+
 }
