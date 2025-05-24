@@ -80,8 +80,10 @@ public class UsersActivity extends AppCompatActivity {
                     allUsers.clear();
                     for (QueryDocumentSnapshot doc : query) {
                         String username = doc.getString("username");
+                        // Get document ID to use as userId
+                        String userId = doc.getId();
                         // use default icon for now:
-                        allUsers.add(new User(username, R.mipmap.ic_launcher));
+                        allUsers.add(new User(userId, username, R.mipmap.ic_launcher));
                     }
                     // display all initially
                     filterUsers("");

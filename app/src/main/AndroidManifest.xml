@@ -7,6 +7,10 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Declare that the app uses the camera but it's not required -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -39,9 +43,6 @@
 
         <activity
             android:name=".NotificationsActivity"
-            android:exported="false" />
-        <activity
-            android:name=".PhotoSelectionActivity"
             android:exported="false" />
         <activity
             android:name=".ProfileActivity"

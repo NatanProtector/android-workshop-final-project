@@ -1,19 +1,30 @@
 package com.natanp_josefm_michaelk.picturegram;
 
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
+import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 public class SplashActivity extends AppCompatActivity {
 
+    private static final String TAG = "SplashActivity";
     private static final long SPLASH_DELAY = 3000;
+    private ActivityResultLauncher<String> requestPermissionLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -25,6 +36,32 @@ public class SplashActivity extends AppCompatActivity {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
             return insets;
         });
+        
+        // Initialize notification channel
+        try {
+            NotificationHelper.createNotificationChannel(this);
+            Log.d(TAG, "Notification channel initialized");
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing notification channel", e);
+        }
+        
+        // Setup permission launcher with better feedback
+        requestPermissionLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            isGranted -> {
+                if (isGranted) {
+                    Log.d(TAG, "Notification permission granted");
+                } else {
+                    Log.w(TAG, "Notification permission denied");
+                    Toast.makeText(this, 
+                            "Notifications will be disabled. You can enable them in app settings.", 
+                            Toast.LENGTH_LONG).show();
+                }
+            }
+        );
+        
+        // Request notification permission for Android 13+
+        requestNotificationPermission();
 
         // Create a handler to delay the transition
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -33,5 +70,24 @@ public class SplashActivity extends AppCompatActivity {
             startActivity(intent);
             finish(); // Close the splash activity
         }, SPLASH_DELAY);
+    }
+    
+    private void requestNotificationPermission() {
+        try {
+            // Only needed for Android 13+ (API level 33+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != 
+                        PackageManager.PERMISSION_GRANTED) {
+                    Log.d(TAG, "Requesting POST_NOTIFICATIONS permission");
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+                } else {
+                    Log.d(TAG, "POST_NOTIFICATIONS permission already granted");
+                }
+            } else {
+                Log.d(TAG, "POST_NOTIFICATIONS permission not needed for this Android version");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error requesting notification permission", e);
+        }
     }
 }
