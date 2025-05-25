@@ -60,6 +60,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
+import com.bumptech.glide.Glide;
 
 public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.OnPhotoClickListener {
 
@@ -80,6 +81,8 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
 
     private ActivityResultLauncher<Intent> galleryLauncher;
     private ActivityResultLauncher<Uri> cameraLauncher;
+    private ActivityResultLauncher<Intent> profileGalleryLauncher;
+    private ActivityResultLauncher<Uri> profileCameraLauncher;
     private Uri currentPhotoUri;
     private String currentPhotoPath;
 
@@ -139,7 +142,17 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
 
         // Set the data to the views
         profileNameTextView.setText(userName);
-        profileImageView.setImageResource(profileImageId);
+        
+        // Load profile picture
+        loadProfilePicture();
+            
+        // Add click listener to profile picture
+        String currentUserName = (user != null && user.getDisplayName() != null) ? user.getDisplayName() : "";
+        if (userName != null && userName.equals(currentUserName)) {
+            profileImageView.setOnClickListener(v -> {
+                showProfilePictureDialog();
+            });
+        }
         
         // Fetch bio from users collection
         if (userName != null) {
@@ -160,7 +173,6 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         }
         
         // Check if this profile belongs to the current user
-        String currentUserName = (user != null && user.getDisplayName() != null) ? user.getDisplayName() : "";
         if (userName != null && userName.equals(currentUserName)) {
             // It's the current user's profile
             settingsButton.setVisibility(View.VISIBLE);
@@ -255,6 +267,9 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         } else {
             notificationContainer.setVisibility(View.GONE);
         }
+
+        // Setup profile picture launchers
+        setupProfilePictureLaunchers();
     }
     
     @Override
@@ -262,7 +277,6 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         super.onResume();
         
         // Refresh notification status when returning to this activity
-        // (for example, after viewing notifications in NotificationsActivity)
         if (userName != null && auth.getCurrentUser() != null && 
             userName.equals(auth.getCurrentUser().getDisplayName())) {
             
@@ -272,6 +286,9 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             
             Log.d(TAG, "Activity resumed - notification status should update automatically");
         }
+
+        // Reload profile picture when activity resumes
+        loadProfilePicture();
     }
     
     private String getStoragePermission() {
@@ -941,7 +958,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         Toast.makeText(this, "Photo deleted", Toast.LENGTH_SHORT).show();
     }
 
-    // Update gallery launcher to use new photo handling
+    // Update gallery launcher to only handle regular photos
     private void setupGalleryLauncher() {
         galleryLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -955,7 +972,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             });
     }
 
-    // Update camera launcher to use new photo handling
+    // Update camera launcher to only handle regular photos
     private void setupCameraLauncher() {
         cameraLauncher = registerForActivityResult(
             new ActivityResultContracts.TakePicture(),
@@ -966,95 +983,128 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             });
     }
 
-    private void setupNotificationCounter(TextView countView, View dotView) {
-        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
-        if (user != null && user.getDisplayName() != null) {
-            // Query for any unread notifications (isRead = false)
-            firestore.collection("notifications")
-                .whereEqualTo("toUser", user.getDisplayName())
-                .whereEqualTo("isRead", false)
-                .addSnapshotListener((snapshot, e) -> {
-                    if (e != null) {
-                        Log.e(TAG, "Error checking for unread notifications: " + e.getMessage());
-                        return;
+    private void setupProfilePictureLaunchers() {
+        // Setup gallery launcher for profile pictures
+        profileGalleryLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    Uri selectedImageUri = result.getData().getData();
+                    if (selectedImageUri != null) {
+                        updateProfilePicture(selectedImageUri);
                     }
-                    
-                    // Count unread notifications
-                    int unreadCount = (snapshot != null) ? snapshot.size() : 0;
-                    Log.d(TAG, "Unread notifications: " + unreadCount);
-                    
-                    // Extremely simple logic: show dot if any unread notifications exist
-                    if (unreadCount > 0) {
-                        // SHOW RED DOT - there are unread notifications
-                        Log.d(TAG, "SHOWING RED DOT - unread count: " + unreadCount);
-                        dotView.setVisibility(View.VISIBLE);
-                    } else {
-                        // HIDE RED DOT - no unread notifications
-                        Log.d(TAG, "HIDING RED DOT - no unread notifications");
-                        dotView.setVisibility(View.GONE);
-                    }
-                    
-                    // Optionally show count (you can comment this out if you just want the dot)
-                    if (unreadCount > 0) {
-                        countView.setVisibility(View.VISIBLE);
-                        countView.setText(String.valueOf(unreadCount));
-                    } else {
-                        countView.setVisibility(View.GONE);
-                    }
-                });
+                }
+            });
+
+        // Setup camera launcher for profile pictures
+        profileCameraLauncher = registerForActivityResult(
+            new ActivityResultContracts.TakePicture(),
+            success -> {
+                if (success && currentPhotoUri != null) {
+                    updateProfilePicture(currentPhotoUri);
+                }
+            });
+    }
+
+    private void openGalleryForProfilePicture() {
+        String storagePermission = getStoragePermission();
+        if (ContextCompat.checkSelfPermission(this, storagePermission) == PackageManager.PERMISSION_GRANTED) {
+            Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+            profileGalleryLauncher.launch(intent);
+        } else {
+            ActivityCompat.requestPermissions(this, new String[]{storagePermission}, REQUEST_CODE_STORAGE_PERMISSION);
         }
     }
 
-    // For debugging only - creates a test notification for the current user
-    private void createTestNotification(String username) {
-        // Check if we need to create a test notification (only for testing/debugging)
-        firestore.collection("notifications")
-            .whereEqualTo("toUser", username)
-            .whereEqualTo("isRead", false)  // Only check for unread notifications
-            .get()
-            .addOnSuccessListener(queryDocumentSnapshots -> {
-                if (queryDocumentSnapshots.isEmpty()) {
-                    // No unread notifications exist, create a test one
-                    Log.d(TAG, "Creating test notification for: " + username);
-                    Notification testNotification = new Notification("follow", "TestUser", username);
-                    // Make sure it's not read
-                    testNotification.setRead(false);
-                    firestore.collection("notifications")
-                        .add(testNotification)
-                        .addOnSuccessListener(documentReference -> 
-                            Log.d(TAG, "Test notification created: " + documentReference.getId()))
-                        .addOnFailureListener(e -> 
-                            Log.e(TAG, "Error creating test notification", e));
-                } else {
-                    Log.d(TAG, "Unread notifications already exist, not creating test notification");
-                }
-            })
-            .addOnFailureListener(e -> 
-                Log.e(TAG, "Error checking for existing notifications", e));
+    private void openCameraForProfilePicture() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            try {
+                File photoFile = createImageFile();
+                currentPhotoPath = photoFile.getAbsolutePath();
+                currentPhotoUri = FileProvider.getUriForFile(this,
+                        "com.natanp_josefm_michaelk.picturegram.fileprovider",
+                        photoFile);
+                profileCameraLauncher.launch(currentPhotoUri);
+            } catch (IOException ex) {
+                Log.e(TAG, "Error creating image file: " + ex.getMessage(), ex);
+                Toast.makeText(this, "Error creating image file", Toast.LENGTH_SHORT).show();
+            }
+        } else {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, REQUEST_CODE_CAMERA_PERMISSION);
+        }
     }
 
-    // Uncomment this method to add a test unread notification (for testing purposes)
-    private void addTestUnreadNotification() {
-        FirebaseUser user = auth.getCurrentUser();
-        if (user == null || user.getDisplayName() == null) {
+    private void updateProfilePicture(Uri imageUri) {
+        FirebaseUser currentUser = auth.getCurrentUser();
+        if (currentUser == null) {
+            Toast.makeText(this, "You must be logged in to update profile picture", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        String username = user.getDisplayName();
+        Toast.makeText(this, "Updating profile picture...", Toast.LENGTH_SHORT).show();
 
-        // Create an unread notification
-        Notification testNotification = new Notification("follow", "TestUser", username);
-        testNotification.setRead(false);
+        try {
+            String filename = "profile_" + currentUser.getUid() + ".jpg";
+            StorageReference profileRef = storage.getReference().child("profile_pictures/" + filename);
 
-        firestore.collection("notifications")
-            .add(testNotification)
-            .addOnSuccessListener(documentReference -> {
-                Log.d(TAG, "Test unread notification created with ID: " + documentReference.getId());
-                Toast.makeText(this, "Test unread notification created", Toast.LENGTH_SHORT).show();
-            })
-            .addOnFailureListener(e -> {
-                Log.e(TAG, "Error creating test notification", e);
+            UploadTask uploadTask = profileRef.putFile(imageUri);
+            
+            uploadTask.continueWithTask(task -> {
+                if (!task.isSuccessful()) {
+                    throw task.getException();
+                }
+                return profileRef.getDownloadUrl();
+            }).addOnCompleteListener(task -> {
+                if (task.isSuccessful()) {
+                    Uri downloadUri = task.getResult();
+                    
+                    firestore.collection("users").document(currentUser.getUid())
+                        .update("profilePictureUrl", downloadUri.toString())
+                        .addOnSuccessListener(aVoid -> {
+                            ImageView profileImageView = findViewById(R.id.profileImageView);
+                            // Use Glide with circleCrop instead of setImageURI
+                            Glide.with(this)
+                                .load(imageUri)
+                                .circleCrop()
+                                .placeholder(R.mipmap.ic_launcher)
+                                .error(R.mipmap.ic_launcher)
+                                .into(profileImageView);
+                            Toast.makeText(this, "Profile picture updated successfully", Toast.LENGTH_SHORT).show();
+                        })
+                        .addOnFailureListener(e -> {
+                            Log.e(TAG, "Error updating profile picture URL in Firestore", e);
+                            Toast.makeText(this, "Failed to update profile picture", Toast.LENGTH_SHORT).show();
+                        });
+                } else {
+                    Log.e(TAG, "Error uploading profile picture", task.getException());
+                    Toast.makeText(this, "Failed to upload profile picture", Toast.LENGTH_SHORT).show();
+                }
             });
+        } catch (Exception e) {
+            Log.e(TAG, "Error preparing profile picture upload", e);
+            Toast.makeText(this, "Error preparing upload: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void showProfilePictureDialog() {
+        String[] options = {"Choose from Gallery", "Take Photo"};
+        
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Update Profile Picture");
+        builder.setItems(options, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                switch (which) {
+                    case 0: // Gallery
+                        openGalleryForProfilePicture();
+                        break;
+                    case 1: // Camera
+                        openCameraForProfilePicture();
+                        break;
+                }
+            }
+        });
+        builder.show();
     }
 
     /**
@@ -1203,6 +1253,167 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 Log.e(TAG, "Error updating following array", e);
                 Toast.makeText(ProfileActivity.this, "Failed to unfollow user", Toast.LENGTH_SHORT).show();
             });
+    }
+
+    private void setupNotificationCounter(TextView countView, View dotView) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        if (user != null && user.getDisplayName() != null) {
+            // Query for any unread notifications (isRead = false)
+            firestore.collection("notifications")
+                .whereEqualTo("toUser", user.getDisplayName())
+                .whereEqualTo("isRead", false)
+                .addSnapshotListener((snapshot, e) -> {
+                    if (e != null) {
+                        Log.e(TAG, "Error checking for unread notifications: " + e.getMessage());
+                        return;
+                    }
+                    
+                    // Count unread notifications
+                    int unreadCount = (snapshot != null) ? snapshot.size() : 0;
+                    Log.d(TAG, "Unread notifications: " + unreadCount);
+                    
+                    // Extremely simple logic: show dot if any unread notifications exist
+                    if (unreadCount > 0) {
+                        // SHOW RED DOT - there are unread notifications
+                        Log.d(TAG, "SHOWING RED DOT - unread count: " + unreadCount);
+                        dotView.setVisibility(View.VISIBLE);
+                    } else {
+                        // HIDE RED DOT - no unread notifications
+                        Log.d(TAG, "HIDING RED DOT - no unread notifications");
+                        dotView.setVisibility(View.GONE);
+                    }
+                    
+                    // Optionally show count (you can comment this out if you just want the dot)
+                    if (unreadCount > 0) {
+                        countView.setVisibility(View.VISIBLE);
+                        countView.setText(String.valueOf(unreadCount));
+                    } else {
+                        countView.setVisibility(View.GONE);
+                    }
+                });
+        }
+    }
+
+    // For debugging only - creates a test notification for the current user
+    private void createTestNotification(String username) {
+        // Check if we need to create a test notification (only for testing/debugging)
+        firestore.collection("notifications")
+            .whereEqualTo("toUser", username)
+            .whereEqualTo("isRead", false)  // Only check for unread notifications
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                if (queryDocumentSnapshots.isEmpty()) {
+                    // No unread notifications exist, create a test one
+                    Log.d(TAG, "Creating test notification for: " + username);
+                    Notification testNotification = new Notification("follow", "TestUser", username);
+                    // Make sure it's not read
+                    testNotification.setRead(false);
+                    firestore.collection("notifications")
+                        .add(testNotification)
+                        .addOnSuccessListener(documentReference -> 
+                            Log.d(TAG, "Test notification created: " + documentReference.getId()))
+                        .addOnFailureListener(e -> 
+                            Log.e(TAG, "Error creating test notification", e));
+                } else {
+                    Log.d(TAG, "Unread notifications already exist, not creating test notification");
+                }
+            })
+            .addOnFailureListener(e -> 
+                Log.e(TAG, "Error checking for existing notifications", e));
+    }
+
+    // Uncomment this method to add a test unread notification (for testing purposes)
+    private void addTestUnreadNotification() {
+        FirebaseUser user = auth.getCurrentUser();
+        if (user == null || user.getDisplayName() == null) {
+            return;
+        }
+
+        String username = user.getDisplayName();
+
+        // Create an unread notification
+        Notification testNotification = new Notification("follow", "TestUser", username);
+        testNotification.setRead(false);
+
+        firestore.collection("notifications")
+            .add(testNotification)
+            .addOnSuccessListener(documentReference -> {
+                Log.d(TAG, "Test unread notification created with ID: " + documentReference.getId());
+                Toast.makeText(this, "Test unread notification created", Toast.LENGTH_SHORT).show();
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error creating test notification", e);
+            });
+    }
+
+    private void loadProfilePicture() {
+        ImageView profileImageView = findViewById(R.id.profileImageView);
+        int defaultImageId = R.mipmap.ic_launcher;
+
+        // If we have a target user ID, load their profile picture
+        if (targetUserId != null) {
+            firestore.collection("users").document(targetUserId)
+                .get()
+                .addOnSuccessListener(documentSnapshot -> {
+                    if (documentSnapshot.exists()) {
+                        String profilePictureUrl = documentSnapshot.getString("profilePictureUrl");
+                        if (profilePictureUrl != null && !profilePictureUrl.isEmpty()) {
+                            // Load profile picture using Glide
+                            Glide.with(this)
+                                .load(profilePictureUrl)
+                                .circleCrop()
+                                .placeholder(defaultImageId)
+                                .error(defaultImageId)
+                                .into(profileImageView);
+                            Log.d(TAG, "Loading profile picture from URL: " + profilePictureUrl);
+                        } else {
+                            Log.d(TAG, "No profile picture URL found, using default");
+                            profileImageView.setImageResource(defaultImageId);
+                        }
+                    } else {
+                        Log.d(TAG, "No user document found, using default");
+                        profileImageView.setImageResource(defaultImageId);
+                    }
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Error loading profile picture", e);
+                    profileImageView.setImageResource(defaultImageId);
+                });
+        } else {
+            // If no target user ID, try to load current user's profile picture
+            FirebaseUser currentUser = auth.getCurrentUser();
+            if (currentUser != null) {
+                firestore.collection("users").document(currentUser.getUid())
+                    .get()
+                    .addOnSuccessListener(documentSnapshot -> {
+                        if (documentSnapshot.exists()) {
+                            String profilePictureUrl = documentSnapshot.getString("profilePictureUrl");
+                            if (profilePictureUrl != null && !profilePictureUrl.isEmpty()) {
+                                Glide.with(this)
+                                    .load(profilePictureUrl)
+                                    .circleCrop()
+                                    .placeholder(defaultImageId)
+                                    .error(defaultImageId)
+                                    .into(profileImageView);
+                                Log.d(TAG, "Loading current user's profile picture from URL: " + profilePictureUrl);
+                            } else {
+                                Log.d(TAG, "No profile picture URL found for current user, using default");
+                                profileImageView.setImageResource(defaultImageId);
+                            }
+                        } else {
+                            Log.d(TAG, "No user document found for current user, using default");
+                            profileImageView.setImageResource(defaultImageId);
+                        }
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Error loading current user's profile picture", e);
+                        profileImageView.setImageResource(defaultImageId);
+                    });
+            } else {
+                Log.d(TAG, "No current user, using default");
+                profileImageView.setImageResource(defaultImageId);
+            }
+        }
     }
 
 }
