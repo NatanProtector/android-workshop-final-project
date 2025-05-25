@@ -1,3 +1,4 @@
+
 package com.natanp_josefm_michaelk.picturegram;
 
 import android.os.Bundle;
@@ -30,15 +31,15 @@ public class UsersActivity extends AppCompatActivity {
     private EditText      searchEt;
     private RecyclerView  recyclerView;
 
-    private List<User>    allUsers      = new ArrayList<>();
-    private List<User>    displayedUsers= new ArrayList<>();
+    private List<User>    allUsers       = new ArrayList<>();
+    private List<User>    displayedUsers = new ArrayList<>();
     private UserAdapter   adapter;
     private FirebaseFirestore db;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Optional Edge-to-Edge support
+        // 1) Edge-to-Edge support
         ViewCompat.setOnApplyWindowInsetsListener(
                 findViewById(android.R.id.content),
                 (v, insets) -> {
@@ -50,13 +51,13 @@ public class UsersActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_users);
 
-        // 1) bind views
+        // 2) bind views
         notAuthTv    = findViewById(R.id.notAuthenticatedTextView);
         contentGroup = findViewById(R.id.usersContentGroup);
         searchEt     = findViewById(R.id.searchEditText);
         recyclerView = findViewById(R.id.recyclerView);
 
-        // 2) auth-guard
+        // 3) auth-guard
         FirebaseUser me = FirebaseAuth.getInstance().getCurrentUser();
         if (me == null) {
             notAuthTv.setVisibility(TextView.VISIBLE);
@@ -67,33 +68,33 @@ public class UsersActivity extends AppCompatActivity {
             contentGroup.setVisibility(Group.VISIBLE);
         }
 
-        // 3) RecyclerView + adapter
+        // 4) RecyclerView + adapter
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         adapter = new UserAdapter(displayedUsers);
         recyclerView.setAdapter(adapter);
 
-        // 4) Firestore init & load all users
+        // 5) Firestore init & load all users
         db = FirebaseFirestore.getInstance();
+        final String currentUserId = me.getUid();
         db.collection("users")
                 .get()
                 .addOnSuccessListener(query -> {
                     allUsers.clear();
                     for (QueryDocumentSnapshot doc : query) {
+                        String userId   = doc.getId();
+                        if (userId.equals(currentUserId)) continue;  // skip yourself
                         String username = doc.getString("username");
-                        // Get document ID to use as userId
-                        String userId = doc.getId();
-                        // use default icon for now:
-                        allUsers.add(new User(userId, username, R.mipmap.ic_launcher));
+                        String picUrl   = doc.getString("profilePictureUrl");
+                        allUsers.add(new User(userId, username, picUrl));
                     }
-                    // display all initially
                     filterUsers("");
                 })
                 .addOnFailureListener(e -> Log.w("UsersActivity", "load failed", e));
 
-        // 5) filter as you type
+        // 6) filter as you type
         searchEt.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s,int a,int b,int c){}
-            @Override public void afterTextChanged(Editable e){}
+            @Override public void beforeTextChanged(CharSequence s,int a,int b,int c) {}
+            @Override public void afterTextChanged(Editable e) {}
             @Override
             public void onTextChanged(CharSequence s,int st,int b,int c) {
                 filterUsers(s.toString());
@@ -105,7 +106,6 @@ public class UsersActivity extends AppCompatActivity {
     private void filterUsers(String query) {
         displayedUsers.clear();
         if (query == null || query.trim().isEmpty()) {
-            // no query = show all
             displayedUsers.addAll(allUsers);
         } else {
             String lower = query.toLowerCase().trim();
@@ -118,3 +118,4 @@ public class UsersActivity extends AppCompatActivity {
         adapter.notifyDataSetChanged();
     }
 }
+

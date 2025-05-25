@@ -6,8 +6,10 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="?attr/selectableItemBackground"
     tools:context=".UsersActivity">
 
+    <!-- “Not authenticated” message -->
     <TextView
         android:id="@+id/notAuthenticatedTextView"
         android:layout_width="wrap_content"
@@ -15,6 +17,7 @@
         android:text="NOT AUTHENTICATED"
         android:textSize="20sp"
         android:textStyle="bold"
+        android:textColor="?attr/colorOnBackground"
         android:visibility="gone"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -26,30 +29,20 @@
         android:id="@+id/usersContentGroup"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:constraint_referenced_ids="searchBarContainer,recyclerView"
-         />
+        app:constraint_referenced_ids="searchBarContainer,recyclerView" />
 
     <!-- A simple "search bar" container -->
     <LinearLayout
         android:id="@+id/searchBarContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/white"
+        android:background="?attr/colorSurface"
         android:orientation="horizontal"
         android:padding="8dp"
-        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- A search icon (make sure you have ic_search in drawable) -->
-        <ImageView
-            android:id="@+id/searchIcon"
-            android:layout_width="42dp"
-            android:layout_height="50dp"
-            android:layout_marginEnd="8dp"
-            android:src="@drawable/ic_search" />
-
-        <!-- The EditText for entering a search query -->
         <EditText
             android:id="@+id/searchEditText"
             android:layout_width="0dp"
@@ -57,7 +50,10 @@
             android:layout_weight="1"
             android:hint="@string/search_hint"
             android:imeOptions="actionSearch"
-            android:inputType="text" />
+            android:inputType="text"
+            android:textColor="?attr/colorOnSurface"
+            android:textColorHint="?attr/colorOnSurface"
+            android:backgroundTint="?attr/colorOnSurface" />
     </LinearLayout>
 
     <!-- The RecyclerView below the search bar -->

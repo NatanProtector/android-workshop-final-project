@@ -9,6 +9,8 @@ import android.widget.TextView;
 
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
+
 import java.util.List;
 
 public class UserAdapter extends RecyclerView.Adapter<UserAdapter.UserViewHolder> {
@@ -21,7 +23,6 @@ public class UserAdapter extends RecyclerView.Adapter<UserAdapter.UserViewHolder
 
     @Override
     public UserViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-        // Inflate your item_user.xml to create View objects
         View view = LayoutInflater.from(parent.getContext())
                 .inflate(R.layout.item_user, parent, false);
         return new UserViewHolder(view);
@@ -29,26 +30,27 @@ public class UserAdapter extends RecyclerView.Adapter<UserAdapter.UserViewHolder
 
     @Override
     public void onBindViewHolder(UserViewHolder holder, int position) {
-        // Populate each row with data
         User user = userList.get(position);
         holder.userNameText.setText(user.getName());
-        holder.userImageView.setImageResource(user.getImageResourceId());
 
-        // Handle the click on the entire row to open ProfileActivity
+        // Load profile picture URL with Glide, fallback to launcher icon
+        String picUrl = user.getProfilePictureUrl();
+        if (picUrl != null && !picUrl.isEmpty()) {
+            Glide.with(holder.userImageView.getContext())
+                    .load(picUrl)
+                    .circleCrop()
+                    .placeholder(R.mipmap.ic_launcher)
+                    .error(R.mipmap.ic_launcher)
+                    .into(holder.userImageView);
+        } else {
+            holder.userImageView.setImageResource(R.mipmap.ic_launcher);
+        }
+
         holder.itemView.setOnClickListener(v -> {
-            // Create intent to open ProfileActivity
             Intent intent = new Intent(holder.itemView.getContext(), ProfileActivity.class);
-            
-            // Pass user data to the ProfileActivity
             intent.putExtra("USER_ID", user.getUserId());
             intent.putExtra("USER_NAME", user.getName());
-            intent.putExtra("USER_IMAGE", user.getImageResourceId());
-            
-            // We can't directly pass the User object since it's not Parcelable/Serializable,
-            // but in a real app you might use a user ID to fetch the full user data
-            // or implement Parcelable on the User class
-            
-            // Start the ProfileActivity
+            intent.putExtra("USER_PIC_URL", user.getProfilePictureUrl());
             holder.itemView.getContext().startActivity(intent);
         });
     }
@@ -58,7 +60,6 @@ public class UserAdapter extends RecyclerView.Adapter<UserAdapter.UserViewHolder
         return userList.size();
     }
 
-    // "ViewHolder" class that holds reference to each row's views
     static class UserViewHolder extends RecyclerView.ViewHolder {
         ImageView userImageView;
         TextView userNameText;
