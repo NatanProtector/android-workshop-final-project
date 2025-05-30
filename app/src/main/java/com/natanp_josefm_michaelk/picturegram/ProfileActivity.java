@@ -210,7 +210,7 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         });
         
         // Initialize photo list
-        userPhotoList = loadPhotos();
+        userPhotoList = new ArrayList<>();
         
         // Setup RecyclerView for photos with a grid layout
         GridLayoutManager layoutManager = new GridLayoutManager(this, 3);
@@ -219,6 +219,9 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         // Create and set adapter
         photoAdapter = new PhotoAdapter(userPhotoList, this, userName);
         photosRecyclerView.setAdapter(photoAdapter);
+        
+        // Load photos
+        loadPhotos();
         
         // Setup item touch helper for drag and drop reordering
         setupItemTouchHelper();
@@ -368,7 +371,6 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 
                 Collections.swap(userPhotoList, fromPosition, toPosition);
                 photoAdapter.notifyItemMoved(fromPosition, toPosition);
-                savePhotos(); // Save the new order
                 return true;
             }
 
@@ -721,29 +723,66 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
     }
     
     private void savePhotos() {
-        SharedPreferences sharedPreferences = getSharedPreferences(PHOTOS_PREFS, Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = sharedPreferences.edit();
-        
-        Gson gson = new Gson();
-        String json = gson.toJson(userPhotoList);
-        
-        // Save photos for the current user
-        editor.putString(PHOTOS_KEY + "_" + userName, json);
-        editor.apply();
+        // No longer needed as we're using Firestore exclusively
     }
     
-    private List<UserPhoto> loadPhotos() {
-        SharedPreferences sharedPreferences = getSharedPreferences(PHOTOS_PREFS, Context.MODE_PRIVATE);
-        
-        Gson gson = new Gson();
-        String json = sharedPreferences.getString(PHOTOS_KEY + "_" + userName, "");
-        
-        if (json.isEmpty()) {
-            return new ArrayList<>();
+    private void loadPhotos() {
+        // Get the target user ID (either the current user or the profile being viewed)
+        final String userId;
+        if (targetUserId != null) {
+            userId = targetUserId;
+        } else {
+            FirebaseUser currentUser = auth.getCurrentUser();
+            if (currentUser != null) {
+                userId = currentUser.getUid();
+            } else {
+                Log.e(TAG, "No user ID available - current user is null");
+                return;
+            }
         }
-        
-        Type type = new TypeToken<ArrayList<UserPhoto>>(){}.getType();
-        return gson.fromJson(json, type);
+
+        // Load photos from Firestore
+        firestore.collection("photos")
+            .whereEqualTo("authorId", userId)
+            .get()
+            .addOnSuccessListener(queryDocumentSnapshots -> {
+                List<UserPhoto> photos = new ArrayList<>();
+                
+                for (com.google.firebase.firestore.QueryDocumentSnapshot document : queryDocumentSnapshots) {
+                    try {
+                        UserPhoto photo = new UserPhoto(
+                            document.getString("storageUrl"),
+                            document.getString("description"),
+                            document.getString("authorId"),
+                            document.getString("uploadedBy")
+                        );
+                        photo.setFirestoreId(document.getId());
+                        photo.setStorageUrl(document.getString("storageUrl"));
+                        Long likeCount = document.getLong("likeCount");
+                        photo.setLikeCount(likeCount != null ? likeCount.intValue() : 0);
+                        List<String> likedBy = (List<String>) document.get("likedBy");
+                        if (likedBy != null) {
+                            photo.getLikedByUsers().addAll(likedBy);
+                        }
+                        photos.add(photo);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error processing photo document: " + document.getId(), e);
+                    }
+                }
+                
+                // Update the UI on the main thread
+                runOnUiThread(() -> {
+                    userPhotoList.clear();
+                    userPhotoList.addAll(photos);
+                    photoAdapter.notifyDataSetChanged();
+                });
+            })
+            .addOnFailureListener(e -> {
+                Log.e(TAG, "Error loading photos from Firestore for user: " + userId, e);
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "Failed to load photos", Toast.LENGTH_SHORT).show();
+                });
+            });
     }
 
     public void openUsersActivityFromProfile(View view) {
@@ -787,41 +826,22 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             return;
         }
 
-        // Show loading indicator
-        Toast.makeText(this, "Uploading photo...", Toast.LENGTH_SHORT).show();
-
         try {
-            // Generate a unique photo ID
             String photoId = UUID.randomUUID().toString();
-            
-            // Create a unique filename with user ID to avoid conflicts
             String filename = currentUser.getUid() + "/" + photoId + ".jpg";
             StorageReference photoRef = storage.getReference().child("photos/" + filename);
 
-            Log.d(TAG, "Starting upload to: " + photoRef.getPath());
-
-            // Upload the file
             UploadTask uploadTask = photoRef.putFile(imageUri);
             
-            // Add progress listener
-            uploadTask.addOnProgressListener(taskSnapshot -> {
-                double progress = (100.0 * taskSnapshot.getBytesTransferred()) / taskSnapshot.getTotalByteCount();
-                Log.d(TAG, "Upload progress: " + progress + "%");
-            });
-
             uploadTask.continueWithTask(task -> {
                 if (!task.isSuccessful()) {
-                    Log.e(TAG, "Upload failed: " + task.getException().getMessage(), task.getException());
                     throw task.getException();
                 }
-                Log.d(TAG, "Upload completed, getting download URL");
                 return photoRef.getDownloadUrl();
             }).addOnCompleteListener(task -> {
                 if (task.isSuccessful()) {
                     Uri downloadUri = task.getResult();
-                    Log.d(TAG, "Got download URL: " + downloadUri);
                     
-                    // Create new photo with Firebase Storage URL
                     UserPhoto newPhoto = new UserPhoto(
                         imageUri.toString(),
                         description,
@@ -830,10 +850,8 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                     );
                     newPhoto.setStorageUrl(downloadUri.toString());
                     
-                    // Create a Firestore document for the photo
                     savePhotoToFirestore(photoId, newPhoto, downloadUri.toString());
                     
-                    // Save to local storage and update UI
                     userPhotoList.add(newPhoto);
                     photoAdapter.notifyItemInserted(userPhotoList.size() - 1);
                     savePhotos();
@@ -844,21 +862,13 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                     
                     Toast.makeText(this, "Photo uploaded successfully", Toast.LENGTH_SHORT).show();
                 } else {
-                    Exception e = task.getException();
-                    Log.e(TAG, "Upload failed", e);
-                    String errorMessage = "Upload failed: ";
-                    if (e != null) {
-                        errorMessage += e.getMessage();
-                        if (e.getCause() != null) {
-                            errorMessage += " (" + e.getCause().getMessage() + ")";
-                        }
-                    }
-                    Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show();
+                    Log.e(TAG, "Upload failed", task.getException());
+                    Toast.makeText(this, "Failed to upload photo", Toast.LENGTH_SHORT).show();
                 }
             });
         } catch (Exception e) {
             Log.e(TAG, "Error preparing upload", e);
-            Toast.makeText(this, "Error preparing upload: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Error preparing upload", Toast.LENGTH_SHORT).show();
         }
     }
     
@@ -1264,26 +1274,21 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                 .whereEqualTo("isRead", false)
                 .addSnapshotListener((snapshot, e) -> {
                     if (e != null) {
-                        Log.e(TAG, "Error checking for unread notifications: " + e.getMessage());
+                        Log.e(TAG, "Error checking for unread notifications", e);
                         return;
                     }
                     
                     // Count unread notifications
                     int unreadCount = (snapshot != null) ? snapshot.size() : 0;
-                    Log.d(TAG, "Unread notifications: " + unreadCount);
                     
-                    // Extremely simple logic: show dot if any unread notifications exist
+                    // Show dot if any unread notifications exist
                     if (unreadCount > 0) {
-                        // SHOW RED DOT - there are unread notifications
-                        Log.d(TAG, "SHOWING RED DOT - unread count: " + unreadCount);
                         dotView.setVisibility(View.VISIBLE);
                     } else {
-                        // HIDE RED DOT - no unread notifications
-                        Log.d(TAG, "HIDING RED DOT - no unread notifications");
                         dotView.setVisibility(View.GONE);
                     }
                     
-                    // Optionally show count (you can comment this out if you just want the dot)
+                    // Show count if there are unread notifications
                     if (unreadCount > 0) {
                         countView.setVisibility(View.VISIBLE);
                         countView.setText(String.valueOf(unreadCount));
@@ -1365,13 +1370,10 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                                 .placeholder(defaultImageId)
                                 .error(defaultImageId)
                                 .into(profileImageView);
-                            Log.d(TAG, "Loading profile picture from URL: " + profilePictureUrl);
                         } else {
-                            Log.d(TAG, "No profile picture URL found, using default");
                             profileImageView.setImageResource(defaultImageId);
                         }
                     } else {
-                        Log.d(TAG, "No user document found, using default");
                         profileImageView.setImageResource(defaultImageId);
                     }
                 })
@@ -1395,13 +1397,10 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                                     .placeholder(defaultImageId)
                                     .error(defaultImageId)
                                     .into(profileImageView);
-                                Log.d(TAG, "Loading current user's profile picture from URL: " + profilePictureUrl);
                             } else {
-                                Log.d(TAG, "No profile picture URL found for current user, using default");
                                 profileImageView.setImageResource(defaultImageId);
                             }
                         } else {
-                            Log.d(TAG, "No user document found for current user, using default");
                             profileImageView.setImageResource(defaultImageId);
                         }
                     })
@@ -1410,7 +1409,6 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
                         profileImageView.setImageResource(defaultImageId);
                     });
             } else {
-                Log.d(TAG, "No current user, using default");
                 profileImageView.setImageResource(defaultImageId);
             }
         }
