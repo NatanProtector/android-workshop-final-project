@@ -63,6 +63,9 @@ public class SplashActivity extends AppCompatActivity {
         // Request notification permission for Android 13+
         requestNotificationPermission();
 
+        // Start the background notification service
+        startService(new Intent(this, BackgroundNotificationService.class));
+
         // Create a handler to delay the transition
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             // Start LoginActivity
