@@ -10,13 +10,18 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
+
+import com.google.firebase.messaging.FirebaseMessaging;
+import com.google.firebase.messaging.RemoteMessage;
 
 public class BackgroundNotificationService extends Service {
     private static final String CHANNEL_ID = "background_notification_channel";
     private static final int NOTIFICATION_ID = 1;
     private static final int FOREGROUND_NOTIFICATION_ID = 2;
+    private static final String TAG = "BackgroundNotificationService";
     private Handler handler;
     private Runnable notificationRunnable;
 
@@ -26,14 +31,17 @@ public class BackgroundNotificationService extends Service {
         createNotificationChannel();
         handler = new Handler(Looper.getMainLooper());
         
-        notificationRunnable = new Runnable() {
-            @Override
-            public void run() {
-                showNotification();
-                // Schedule next notification in 30 seconds
-                handler.postDelayed(this, 30000);
-            }
-        };
+        // Subscribe to FCM messages
+        FirebaseMessaging.getInstance().getToken()
+            .addOnCompleteListener(task -> {
+                if (!task.isSuccessful()) {
+                    Log.w(TAG, "Fetching FCM registration token failed", task.getException());
+                    return;
+                }
+                // Get new FCM registration token
+                String token = task.getResult();
+                Log.d(TAG, "FCM Token: " + token);
+            });
     }
 
     @Override
@@ -41,16 +49,33 @@ public class BackgroundNotificationService extends Service {
         // Start as a foreground service
         startForeground(FOREGROUND_NOTIFICATION_ID, createForegroundNotification());
         
-        // Start showing notifications
-        handler.post(notificationRunnable);
+        // Handle incoming FCM message if present
+        if (intent != null && intent.hasExtra("message")) {
+            RemoteMessage message = intent.getParcelableExtra("message");
+            if (message != null) {
+                handleFCMessage(message);
+            }
+        }
+        
         return START_STICKY;
+    }
+
+    private void handleFCMessage(RemoteMessage message) {
+        String title = message.getNotification() != null ? 
+            message.getNotification().getTitle() : "New Message";
+        String body = message.getNotification() != null ? 
+            message.getNotification().getBody() : "You have a new message";
+
+        showNotification(title, body);
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         // Remove callbacks when service is destroyed
-        handler.removeCallbacks(notificationRunnable);
+        if (handler != null && notificationRunnable != null) {
+            handler.removeCallbacks(notificationRunnable);
+        }
     }
 
     @Override
@@ -63,7 +88,7 @@ public class BackgroundNotificationService extends Service {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
                     "Background Notifications",
-                    NotificationManager.IMPORTANCE_DEFAULT
+                    NotificationManager.IMPORTANCE_HIGH
             );
             NotificationManager manager = getSystemService(NotificationManager.class);
             manager.createNotificationChannel(channel);
@@ -88,7 +113,7 @@ public class BackgroundNotificationService extends Service {
                 .build();
     }
 
-    private void showNotification() {
+    private void showNotification(String title, String body) {
         Intent notificationIntent = new Intent(this, SplashActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 this,
@@ -99,9 +124,9 @@ public class BackgroundNotificationService extends Service {
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setContentTitle("Background Notification")
-                .setContentText("This is a notification from the background service")
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true);
 
