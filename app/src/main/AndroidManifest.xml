@@ -28,7 +28,8 @@
         <service
             android:name=".BackgroundNotificationService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <activity
             android:name=".SplashActivity"
