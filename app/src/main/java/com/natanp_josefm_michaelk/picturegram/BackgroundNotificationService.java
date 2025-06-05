@@ -14,7 +14,6 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.RemoteMessage;
 
 public class BackgroundNotificationService extends Service {
@@ -30,18 +29,6 @@ public class BackgroundNotificationService extends Service {
         super.onCreate();
         createNotificationChannel();
         handler = new Handler(Looper.getMainLooper());
-        
-        // Subscribe to FCM messages
-        FirebaseMessaging.getInstance().getToken()
-            .addOnCompleteListener(task -> {
-                if (!task.isSuccessful()) {
-                    Log.w(TAG, "Fetching FCM registration token failed", task.getException());
-                    return;
-                }
-                // Get new FCM registration token
-                String token = task.getResult();
-                Log.d(TAG, "FCM Token: " + token);
-            });
     }
 
     @Override

@@ -20,6 +20,9 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+
 public class SplashActivity extends AppCompatActivity {
 
     private static final String TAG = "SplashActivity";
@@ -66,10 +69,28 @@ public class SplashActivity extends AppCompatActivity {
         // Start the background notification service
         startService(new Intent(this, BackgroundNotificationService.class));
 
+        // Update FCM token if user is already signed in
+        FCMTokenService.updateCurrentUserToken();
+
         // Create a handler to delay the transition
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            // Start LoginActivity
-            Intent intent = new Intent(SplashActivity.this, LoginActivity.class);
+            // Check if user is already signed in
+            FirebaseUser currentUser = FirebaseAuth.getInstance().getCurrentUser();
+            Intent intent;
+            
+            if (currentUser != null) {
+                // User is signed in, go directly to ProfileActivity
+                intent = new Intent(SplashActivity.this, ProfileActivity.class);
+                String userName = (currentUser.getDisplayName() != null && !currentUser.getDisplayName().isEmpty()) 
+                                ? currentUser.getDisplayName() 
+                                : "Default User";
+                intent.putExtra("USER_NAME", userName);
+                intent.putExtra("USER_IMAGE", R.mipmap.ic_launcher);
+            } else {
+                // User is not signed in, go to LoginActivity
+                intent = new Intent(SplashActivity.this, LoginActivity.class);
+            }
+            
             startActivity(intent);
             finish(); // Close the splash activity
         }, SPLASH_DELAY);
