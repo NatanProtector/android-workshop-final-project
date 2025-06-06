@@ -16,6 +16,7 @@ import androidx.core.view.WindowInsetsCompat;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.auth.UserProfileChangeRequest;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 // ⬅️ NEW imports for Firestore
 import com.google.firebase.firestore.FirebaseFirestore;
@@ -151,13 +152,25 @@ public class RegisterActivity extends AppCompatActivity {
         userMap.put("profileImageUrl", ""); // will fill later if you add a profile photo
         userMap.put("bio", "");
         
+        // Get FCM token
+        FirebaseMessaging.getInstance().getToken()
+            .addOnCompleteListener(task -> {
+                if (!task.isSuccessful()) {
+                    Log.w(TAG, "Fetching FCM registration token failed", task.getException());
+                    return;
+                }
 
-        // Save user to Firestore
-        db.collection("users")
-                .document(uid)
-                .set(userMap)
-                .addOnSuccessListener(aVoid -> Log.d(TAG, "User saved to Firestore"))
-                .addOnFailureListener(e -> Log.w(TAG, "Error saving user to Firestore", e));
+                // Get new FCM registration token
+                String token = task.getResult();
+                userMap.put("fcmToken", token);
+
+                // Save user to Firestore with FCM token
+                db.collection("users")
+                    .document(uid)
+                    .set(userMap)
+                    .addOnSuccessListener(aVoid -> Log.d(TAG, "User saved to Firestore with FCM token"))
+                    .addOnFailureListener(e -> Log.w(TAG, "Error saving user to Firestore", e));
+            });
     }
 
     private void navigateToLogin() {

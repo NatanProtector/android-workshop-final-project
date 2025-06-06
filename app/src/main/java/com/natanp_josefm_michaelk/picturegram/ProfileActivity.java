@@ -124,6 +124,9 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
             // User is signed in
             notAuthenticatedTextView.setVisibility(View.GONE);
             profileContentGroup.setVisibility(View.VISIBLE);
+            
+            // Update FCM token to ensure it's current (important for app reinstalls)
+            FCMTokenService.updateCurrentUserToken();
         }
 
         // Get views
