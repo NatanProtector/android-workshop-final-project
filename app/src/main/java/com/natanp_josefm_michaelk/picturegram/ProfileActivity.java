@@ -478,12 +478,19 @@ public class ProfileActivity extends AppCompatActivity implements PhotoAdapter.O
         
         return image;
     }
-    
+
     @Override
     public void onPhotoClick(UserPhoto photo, int position) {
-        // In a full implementation, this would open a detail view of the photo
-        Toast.makeText(this, "Photo clicked at position " + position, Toast.LENGTH_SHORT).show();
+        Intent intent = new Intent(this, FullScreenImageActivity.class);
+
+        String imgPath = (photo.getStorageUrl() != null && !photo.getStorageUrl().isEmpty())
+                ? photo.getStorageUrl()
+                : photo.getFilePath();
+
+        intent.putExtra("IMAGE_PATH", imgPath);
+        startActivity(intent);
     }
+
 
     @Override
     public void onLikeClick(UserPhoto photo, int position) {

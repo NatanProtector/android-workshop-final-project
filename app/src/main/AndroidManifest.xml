@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Runtime permissions -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -11,9 +12,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    
-    <!-- Declare that the app uses the camera but it's not required -->
-    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Camera is optional -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -25,8 +28,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PictureGram"
         tools:targetApi="31">
-        
-        <!-- FCM Broadcast Receiver -->
+
+        <!-- FCM broadcast receiver -->
         <receiver
             android:name=".FCMBroadcastReceiver"
             android:exported="false">
@@ -42,7 +45,7 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- Firebase Cloud Messaging Service -->
+        <!-- FCM token / message service -->
         <service
             android:name=".FCMTokenService"
             android:exported="false">
@@ -51,6 +54,7 @@
             </intent-filter>
         </service>
 
+        <!-- Launcher activity -->
         <activity
             android:name=".SplashActivity"
             android:exported="true">
@@ -60,6 +64,7 @@
             </intent-filter>
         </activity>
 
+        <!-- FileProvider for sharing images -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.natanp_josefm_michaelk.picturegram.fileprovider"
@@ -70,24 +75,19 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Full-screen image viewer (new) -->
         <activity
-            android:name=".NotificationsActivity"
-            android:exported="false" />
-        <activity
-            android:name=".ProfileActivity"
-            android:exported="false" />
-        <activity
-            android:name=".SettingsActivity"
-            android:exported="false" />
-        <activity
-            android:name=".RegisterActivity"
-            android:exported="false" />
-        <activity
-            android:name=".LoginActivity"
-            android:exported="false" />
-        <activity
-            android:name=".UsersActivity"
-            android:exported="true" />
-    </application>
+            android:name=".FullScreenImageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Material3.DayNight.NoActionBar" />
 
+        <!-- Other screens -->
+        <activity android:name=".NotificationsActivity" android:exported="false" />
+        <activity android:name=".ProfileActivity"        android:exported="false" />
+        <activity android:name=".SettingsActivity"       android:exported="false" />
+        <activity android:name=".RegisterActivity"       android:exported="false" />
+        <activity android:name=".LoginActivity"          android:exported="false" />
+        <activity android:name=".UsersActivity"          android:exported="true"  />
+
+    </application>
 </manifest>
